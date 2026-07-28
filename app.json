@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "EIYOU",
+    "slug": "eiyou",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./public/manifest.json",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#0f172a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.gekiren.eiyou"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a"
+      },
+      "package": "com.gekiren.eiyou"
+    },
+    "web": {
+      "favicon": "./public/manifest.json"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "40d3122e-aa40-4c58-a7a2-86e180420480"
+      }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/40d3122e-aa40-4c58-a7a2-86e180420480"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
+  }
+}
