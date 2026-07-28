@@ -4,7 +4,6 @@
     "slug": "eiyou",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./public/manifest.json",
     "userInterfaceStyle": "dark",
     "splash": {
       "backgroundColor": "#0f172a"
@@ -18,9 +17,6 @@
         "backgroundColor": "#0f172a"
       },
       "package": "com.gekiren.eiyou"
-    },
-    "web": {
-      "favicon": "./public/manifest.json"
     },
     "extra": {
       "eas": {
