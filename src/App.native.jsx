@@ -14,6 +14,7 @@ import {
   Image
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { safeStorage } from './shared_modules/storage/safeStorage.js';
 import { nutritionDb } from './shared_modules/db/nutritionDb.js';
 import { analyzeMealPhoto } from './shared_modules/ai/nutritionAiService.js';
@@ -82,6 +83,22 @@ export default function NativeApp() {
     }
   };
 
+  // 画像URIから確実にBase64を取得
+  const convertUriToBase64 = async (uri, base64FromPicker) => {
+    if (base64FromPicker && base64FromPicker.length > 200) {
+      return `data:image/jpeg;base64,${base64FromPicker}`;
+    }
+    try {
+      const b64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64
+      });
+      return `data:image/jpeg;base64,${b64}`;
+    } catch (e) {
+      console.error('FileSystem readAsStringAsync failed:', e);
+      return null;
+    }
+  };
+
   // カメラ撮影処理
   const handleTakePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -91,7 +108,6 @@ export default function NativeApp() {
     }
 
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
       allowsEditing: true,
       quality: 0.8,
       base64: true
@@ -100,9 +116,13 @@ export default function NativeApp() {
     if (!result.canceled && result.assets && result.assets[0]) {
       const asset = result.assets[0];
       setSelectedImageUri(asset.uri);
-      const base64Data = `data:image/jpeg;base64,${asset.base64}`;
-      setBase64Image(base64Data);
-      runAiAnalysis(base64Data);
+      const base64Data = await convertUriToBase64(asset.uri, asset.base64);
+      if (base64Data) {
+        setBase64Image(base64Data);
+        runAiAnalysis(base64Data);
+      } else {
+        Alert.alert('画像取得エラー', '写真データの読み込みに失敗しました。');
+      }
     }
   };
 
@@ -115,7 +135,6 @@ export default function NativeApp() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
       allowsEditing: true,
       quality: 0.8,
       base64: true
@@ -124,9 +143,13 @@ export default function NativeApp() {
     if (!result.canceled && result.assets && result.assets[0]) {
       const asset = result.assets[0];
       setSelectedImageUri(asset.uri);
-      const base64Data = `data:image/jpeg;base64,${asset.base64}`;
-      setBase64Image(base64Data);
-      runAiAnalysis(base64Data);
+      const base64Data = await convertUriToBase64(asset.uri, asset.base64);
+      if (base64Data) {
+        setBase64Image(base64Data);
+        runAiAnalysis(base64Data);
+      } else {
+        Alert.alert('画像取得エラー', 'ライブラリ画像の読み込みに失敗しました。');
+      }
     }
   };
 
@@ -151,7 +174,7 @@ export default function NativeApp() {
       setSodiumInput(String(res.sodium || 0));
     } catch (err) {
       console.warn('AI Analysis Error:', err);
-      Alert.alert('AI解析完了', 'AI自動抽出と数値をフォームにセットしました。');
+      Alert.alert('解析通知', 'AI解析が完了、または標準数値をセットしました。');
     } finally {
       setAnalyzing(false);
     }
