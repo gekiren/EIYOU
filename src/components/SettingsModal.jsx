@@ -1,21 +1,15 @@
 import React, { useState } from 'react';
-import { X, Key, Target, Download, Upload, Save, Check } from 'lucide-react';
+import { X, Target, Download, Upload, Save } from 'lucide-react';
 import { exportMealsToCSV, importMealsFromCSV } from '../shared_modules/csv/nutritionCsvService';
 
 export default function SettingsModal({
   isOpen,
   onClose,
-  apiKeys,
-  onSaveApiKeys,
   userGoals,
   onSaveUserGoals,
   onRefreshData
 }) {
   if (!isOpen) return null;
-
-  const [geminiKey, setGeminiKey] = useState(apiKeys.geminiKey || '');
-  const [deepSeekKey, setDeepSeekKey] = useState(apiKeys.deepSeekKey || '');
-  const [workerUrl, setWorkerUrl] = useState(apiKeys.workerUrl || '');
 
   const [caloriesGoal, setCaloriesGoal] = useState(userGoals.calories || 2200);
   const [proteinGoal, setProteinGoal] = useState(userGoals.protein || 75);
@@ -26,12 +20,6 @@ export default function SettingsModal({
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
 
   const handleSaveAll = () => {
-    onSaveApiKeys({
-      geminiKey,
-      deepSeekKey,
-      workerUrl
-    });
-
     onSaveUserGoals({
       calories: Number(caloriesGoal),
       protein: Number(proteinGoal),
@@ -40,11 +28,11 @@ export default function SettingsModal({
       sodium: Number(sodiumGoal)
     });
 
-    setSaveSuccessMsg('設定を保存しました');
+    setSaveSuccessMsg('目標設定を保存しました');
     setTimeout(() => {
       setSaveSuccessMsg('');
       onClose();
-    }, 1200);
+    }, 1000);
   };
 
   const handleExportCSV = async () => {
@@ -82,7 +70,7 @@ export default function SettingsModal({
     }}>
       <div className="glass-panel animate-fade-in" style={{
         width: '100%',
-        maxWidth: '620px',
+        maxWidth: '520px',
         maxHeight: '90vh',
         overflowY: 'auto',
         padding: '28px',
@@ -92,50 +80,7 @@ export default function SettingsModal({
           <X size={20} />
         </button>
 
-        <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '20px' }}>設定 & データ管理</h2>
-
-        {/* APIキー設定 */}
-        <div style={{ marginBottom: '24px' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: 'var(--color-primary)' }}>
-            <Key size={18} />
-            <span>AI解析 APIキー・プロキシ設定</span>
-          </h3>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div>
-              <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Gemini APIキー (Gemini 3.6 Flash)</label>
-              <input
-                type="password"
-                value={geminiKey}
-                onChange={(e) => setGeminiKey(e.target.value)}
-                placeholder="AIzaSy..."
-                className="input-field"
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>DeepSeek APIキー (DeepSeek V4)</label>
-              <input
-                type="password"
-                value={deepSeekKey}
-                onChange={(e) => setDeepSeekKey(e.target.value)}
-                placeholder="sk-..."
-                className="input-field"
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Cloudflare Worker プロキシ URL (任意)</label>
-              <input
-                type="text"
-                value={workerUrl}
-                onChange={(e) => setWorkerUrl(e.target.value)}
-                placeholder="https://eiyou-proxy.workers.dev"
-                className="input-field"
-              />
-            </div>
-          </div>
-        </div>
+        <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '20px' }}>設定 & 目標管理</h2>
 
         {/* 目標設定 */}
         <div style={{ marginBottom: '24px' }}>

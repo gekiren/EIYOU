@@ -1,5 +1,6 @@
 import { analyzeNutritionWithGemini } from './geminiNutritionService';
 import { extractNutritionTextWithOCR, parseNutritionOcrText } from '../ocr/nutritionOcrService';
+import { SECURE_WORKER_PROXY_URL } from '../../config/constants';
 
 /**
  * DeepSeek V4 API による栄養・食事画像解析
@@ -102,7 +103,7 @@ export async function analyzeMealPhoto({
   base64Image,
   geminiApiKey,
   deepSeekApiKey,
-  workerProxyUrl,
+  workerProxyUrl = SECURE_WORKER_PROXY_URL,
   onProgress
 }) {
   let ocrResult = { text: '' };

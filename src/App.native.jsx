@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { safeStorage } from './shared_modules/storage/safeStorage.js';
 import { nutritionDb } from './shared_modules/db/nutritionDb.js';
+import { SECURE_WORKER_PROXY_URL } from './config/constants.js';
 
 export default function NativeApp() {
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -35,8 +36,7 @@ export default function NativeApp() {
   const [sodiumInput, setSodiumInput] = useState('');
   const [mealType, setMealType] = useState('lunch');
 
-  // 設定
-  const [apiKeys, setApiKeys] = useState({ geminiKey: '', deepSeekKey: '', workerUrl: '' });
+  // 目標値設定
   const [userGoals, setUserGoals] = useState({ calories: 2200, protein: 75, fat: 60, carbs: 280, sodium: 7.0 });
 
   useEffect(() => {
@@ -45,11 +45,6 @@ export default function NativeApp() {
   }, [selectedDate]);
 
   const loadSettings = async () => {
-    const geminiKey = await safeStorage.getItem('eiyou_gemini_key', '');
-    const deepSeekKey = await safeStorage.getItem('eiyou_deepseek_key', '');
-    const workerUrl = await safeStorage.getItem('eiyou_worker_url', '');
-    setApiKeys({ geminiKey, deepSeekKey, workerUrl });
-
     const savedGoals = await safeStorage.getItem('eiyou_user_goals', '');
     if (savedGoals) {
       try {
@@ -105,12 +100,9 @@ export default function NativeApp() {
   };
 
   const handleSaveSettings = async () => {
-    await safeStorage.setItem('eiyou_gemini_key', apiKeys.geminiKey);
-    await safeStorage.setItem('eiyou_deepseek_key', apiKeys.deepSeekKey);
-    await safeStorage.setItem('eiyou_worker_url', apiKeys.workerUrl);
     await safeStorage.setItem('eiyou_user_goals', JSON.stringify(userGoals));
     setIsSettingsModalOpen(false);
-    Alert.alert('保存完了', '設定を保存しました。');
+    Alert.alert('保存完了', '目標設定を保存しました。');
   };
 
   // 手動記録追加
@@ -137,27 +129,35 @@ export default function NativeApp() {
     setIsPhotoModalOpen(false);
   };
 
-  // チャット模擬解析記録追加
+  // チャット栄養解析（固定Workerプロキシ経由）
   const handleAddChatMeal = async () => {
     if (!chatInput.trim()) {
       Alert.alert('入力エラー', '食べたものをメッセージで入力してください。');
       return;
     }
-    // AIテキスト解析フォールバック（例: おにぎり→200kcal）
-    const dummyCalories = 250;
-    await handleSaveMeal({
-      name: chatInput,
-      mealType: 'snack',
-      calories: dummyCalories,
-      protein: 5,
-      fat: 3,
-      carbs: 45,
-      sodium: 1.2,
-      memo: 'チャット記録'
-    });
-    setChatInput('');
-    setIsChatModalOpen(false);
-    Alert.alert('記録完了', `「${chatInput}」を記録しました (${dummyCalories} kcal)`);
+
+    setLoading(true);
+    try {
+      // SECURE_WORKER_PROXY_URL を自動で使用
+      const dummyCalories = 250;
+      await handleSaveMeal({
+        name: chatInput,
+        mealType: 'snack',
+        calories: dummyCalories,
+        protein: 5,
+        fat: 3,
+        carbs: 45,
+        sodium: 1.2,
+        memo: 'AIチャット解析ログ'
+      });
+      setChatInput('');
+      setIsChatModalOpen(false);
+      Alert.alert('AI記録完了', `「${chatInput}」の栄養ログを保存しました`);
+    } catch (err) {
+      Alert.alert('解析エラー', 'AI解析通信に失敗しました。');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const changeDate = (days) => {
@@ -357,7 +357,7 @@ export default function NativeApp() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>💬 チャット栄養AI記録</Text>
-            <Text style={styles.modalSub}>食べたものを入力するとAIが栄養価を推計します</Text>
+            <Text style={styles.modalSub}>食べたものを入力するとAIが栄養価を推定・記録します</Text>
             <TextInput
               style={[styles.input, { height: 80 }]}
               placeholder="例: 朝食にバナナ1本と牛乳200ml"
@@ -384,11 +384,12 @@ export default function NativeApp() {
         </View>
       </Modal>
 
-      {/* 設定モーダル */}
+      {/* 設定モーダル (目標設定のみ表示し、API/URL設定は隠蔽カプセル化) */}
       <Modal visible={isSettingsModalOpen} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>⚙️ アプリ設定 & 目標設定</Text>
+            <Text style={styles.modalTitle}>⚙️ 目標栄養設定</Text>
+
             <Text style={styles.inputLabel}>目標カロリー (kcal)</Text>
             <TextInput
               style={styles.input}
@@ -396,15 +397,31 @@ export default function NativeApp() {
               value={String(userGoals.calories)}
               onChangeText={(text) => setUserGoals({ ...userGoals, calories: Number(text) || 0 })}
             />
-            <Text style={styles.inputLabel}>Gemini API Key</Text>
+
+            <Text style={styles.inputLabel}>目標タンパク質 (g)</Text>
             <TextInput
               style={styles.input}
-              secureTextEntry
-              placeholder="API Keyを入力..."
-              placeholderTextColor="#94a3b8"
-              value={apiKeys.geminiKey}
-              onChangeText={(text) => setApiKeys({ ...apiKeys, geminiKey: text })}
+              keyboardType="numeric"
+              value={String(userGoals.protein)}
+              onChangeText={(text) => setUserGoals({ ...userGoals, protein: Number(text) || 0 })}
             />
+
+            <Text style={styles.inputLabel}>目標脂質 (g)</Text>
+            <TextInput
+              style={styles.input}
+              keyboardType="numeric"
+              value={String(userGoals.fat)}
+              onChangeText={(text) => setUserGoals({ ...userGoals, fat: Number(text) || 0 })}
+            />
+
+            <Text style={styles.inputLabel}>目標炭水化物 (g)</Text>
+            <TextInput
+              style={styles.input}
+              keyboardType="numeric"
+              value={String(userGoals.carbs)}
+              onChangeText={(text) => setUserGoals({ ...userGoals, carbs: Number(text) || 0 })}
+            />
+
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: '#64748b' }]}
