@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "eiyou-ai-proxy",
+  "main": "src/shared_modules/worker/workerIndex.js",
+  "compatibility_date": "2026-07-29",
+  "observability": {
+    "enabled": true
+  }
+}

@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "deploy:worker": "wrangler deploy",
     "android": "expo run:android",
     "ios": "expo run:ios"
   },
@@ -27,7 +28,8 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
-    "vite": "^5.4.1"
+    "vite": "^5.4.1",
+    "wrangler": "^3.114.17"
   },
   "main": "index.js"
 }
