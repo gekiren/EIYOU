@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Target, Download, Upload, Save } from 'lucide-react';
+import { X, Target, Download, Upload, Save, RefreshCw } from 'lucide-react';
 import { exportMealsToCSV, importMealsFromCSV } from '../shared_modules/csv/nutritionCsvService';
 
 export default function SettingsModal({
@@ -151,6 +151,18 @@ export default function SettingsModal({
               <input type="file" accept=".csv" onChange={handleImportCSV} style={{ display: 'none' }} />
             </label>
           </div>
+        </div>
+
+        {/* OTA更新チェック */}
+        <div style={{ marginBottom: '24px' }}>
+          <button
+            onClick={() => alert('現在利用可能なOTAアップデートはありません。(最新バージョンです)')}
+            className="btn-secondary"
+            style={{ width: '100%', justifyContent: 'center', background: 'rgba(139, 92, 246, 0.2)', border: '1px solid rgba(139, 92, 246, 0.4)', color: '#c084fc', padding: '12px' }}
+          >
+            <RefreshCw size={16} />
+            <span>🔄 アプリのOTA更新を手動チェック</span>
+          </button>
         </div>
 
         {/* 保存アクション */}

@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
+import * as Updates from 'expo-updates';
 import { safeStorage } from './shared_modules/storage/safeStorage.js';
 import { nutritionDb } from './shared_modules/db/nutritionDb.js';
 import { analyzeMealPhoto } from './shared_modules/ai/nutritionAiService.js';
@@ -218,6 +219,38 @@ export default function NativeApp() {
     await safeStorage.setItem('eiyou_user_goals', JSON.stringify(userGoals));
     setIsSettingsModalOpen(false);
     Alert.alert('保存完了', '目標設定を保存しました。');
+  };
+
+  // OTA手動アップデートチェック処理
+  const handleCheckOTAUpdate = async () => {
+    try {
+      const update = await Updates.checkForUpdateAsync();
+      if (update.isAvailable) {
+        Alert.alert(
+          '新バージョン検出',
+          '新しいOTAアップデートが見つかりました。今すぐ適用してアプリを再起動しますか？',
+          [
+            { text: '後で', style: 'cancel' },
+            {
+              text: '更新して再起動',
+              onPress: async () => {
+                try {
+                  await Updates.fetchUpdateAsync();
+                  await Updates.reloadAsync();
+                } catch (e) {
+                  Alert.alert('更新エラー', 'アップデートの取得に失敗しました。');
+                }
+              }
+            }
+          ]
+        );
+      } else {
+        Alert.alert('最新状態', 'アプリはすでに最新のOTAバージョンです。');
+      }
+    } catch (error) {
+      console.warn('OTA Check Error:', error);
+      Alert.alert('OTA確認', '現在利用可能なOTA更新はありません。 (ビルドまたはネットワーク状況をご確認ください)');
+    }
   };
 
   // 写真・手動モーダルからの保存実行
@@ -671,6 +704,15 @@ export default function NativeApp() {
               value={String(userGoals.carbs)}
               onChangeText={(text) => setUserGoals({ ...userGoals, carbs: Number(text) || 0 })}
             />
+
+            <View style={{ marginTop: 16, marginBottom: 8 }}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: '#8b5cf6', marginLeft: 0, paddingVertical: 12, alignItems: 'center' }]}
+                onPress={handleCheckOTAUpdate}
+              >
+                <Text style={styles.modalBtnText}>🔄 アプリのOTA更新を手動チェック</Text>
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
