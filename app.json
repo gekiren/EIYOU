@@ -28,6 +28,15 @@
     },
     "runtimeVersion": {
       "policy": "appVersion"
-    }
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "食事や栄養成分表示ラベルの写真を撮影・選択するために写真ライブラリへのアクセスを使用します。",
+          "cameraPermission": "食事や栄養成分表示ラベルを撮影するためにカメラを使用します。"
+        }
+      ]
+    ]
   }
 }

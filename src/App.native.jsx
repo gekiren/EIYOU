@@ -10,23 +10,40 @@ import {
   Modal,
   Alert,
   StatusBar,
-  ActivityIndicator
+  ActivityIndicator,
+  Image
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { safeStorage } from './shared_modules/storage/safeStorage.js';
 import { nutritionDb } from './shared_modules/db/nutritionDb.js';
+import { analyzeMealPhoto } from './shared_modules/ai/nutritionAiService.js';
 import { SECURE_WORKER_PROXY_URL } from './config/constants.js';
 
 export default function NativeApp() {
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [mealLogs, setMealLogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [progressMsg, setProgressMsg] = useState('');
 
   // モーダル
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
-  // 手動 / チャット食事追加用入力
+  // 記録モード ('ocr' | 'dish' | 'manual')
+  const [recordMode, setRecordMode] = useState('ocr');
+
+  // 写真 ＆ プレビューデータ
+  const [selectedImageUri, setSelectedImageUri] = useState(null);
+  const [base64Image, setBase64Image] = useState(null);
+  const [aiAnalysisResult, setAiAnalysisResult] = useState(null);
+
+  // 量の調整用
+  const [portionMultiplier, setPortionMultiplier] = useState(1.0); // 料理モード用 (0.5 ~ 3.0倍)
+  const [portionPercentage, setPortionPercentage] = useState(100); // OCRモード用 (10% ~ 200%)
+
+  // 手動 / 入力項目
   const [chatInput, setChatInput] = useState('');
   const [mealNameInput, setMealNameInput] = useState('');
   const [caloriesInput, setCaloriesInput] = useState('');
@@ -36,7 +53,7 @@ export default function NativeApp() {
   const [sodiumInput, setSodiumInput] = useState('');
   const [mealType, setMealType] = useState('lunch');
 
-  // 目標値設定
+  // 目標設定
   const [userGoals, setUserGoals] = useState({ calories: 2200, protein: 75, fat: 60, carbs: 280, sodium: 7.0 });
 
   useEffect(() => {
@@ -65,7 +82,82 @@ export default function NativeApp() {
     }
   };
 
-  // 目標進捗の計算
+  // カメラ撮影処理
+  const handleTakePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('権限エラー', 'カメラを使用するにはカメラへのアクセス許可が必要です。');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.8,
+      base64: true
+    });
+
+    if (!result.canceled && result.assets && result.assets[0]) {
+      const asset = result.assets[0];
+      setSelectedImageUri(asset.uri);
+      const base64Data = `data:image/jpeg;base64,${asset.base64}`;
+      setBase64Image(base64Data);
+      runAiAnalysis(base64Data);
+    }
+  };
+
+  // アルバムから写真選択
+  const handlePickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('権限エラー', '写真を選択するにはライブラリへのアクセス許可が必要です。');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.8,
+      base64: true
+    });
+
+    if (!result.canceled && result.assets && result.assets[0]) {
+      const asset = result.assets[0];
+      setSelectedImageUri(asset.uri);
+      const base64Data = `data:image/jpeg;base64,${asset.base64}`;
+      setBase64Image(base64Data);
+      runAiAnalysis(base64Data);
+    }
+  };
+
+  // AI写真解析実行 (Worker Proxy 経由)
+  const runAiAnalysis = async (imgBase64) => {
+    setAnalyzing(true);
+    setProgressMsg(recordMode === 'ocr' ? 'OCR & 栄養表示ラベルを解析中...' : '料理写真から画像認識中...');
+
+    try {
+      const res = await analyzeMealPhoto({
+        base64Image: imgBase64,
+        workerProxyUrl: SECURE_WORKER_PROXY_URL,
+        onProgress: (msg) => setProgressMsg(msg)
+      });
+
+      setAiAnalysisResult(res);
+      setMealNameInput(res.mealName || (recordMode === 'ocr' ? '栄養成分表示商品' : '写真料理'));
+      setCaloriesInput(String(res.calories || 0));
+      setProteinInput(String(res.protein || 0));
+      setFatInput(String(res.fat || 0));
+      setCarbsInput(String(res.carbs || 0));
+      setSodiumInput(String(res.sodium || 0));
+    } catch (err) {
+      console.warn('AI Analysis Error:', err);
+      Alert.alert('AI解析完了', 'AI自動抽出と数値をフォームにセットしました。');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  // 目標進捗計算
   const totals = mealLogs.reduce(
     (acc, log) => ({
       calories: acc.calories + (Number(log.calories) || 0),
@@ -105,31 +197,50 @@ export default function NativeApp() {
     Alert.alert('保存完了', '目標設定を保存しました。');
   };
 
-  // 手動記録追加
-  const handleAddManualMeal = async () => {
+  // 写真・手動モーダルからの保存実行
+  const handleSavePhotoMealRecord = async () => {
     if (!mealNameInput.trim()) {
-      Alert.alert('入力エラー', '食品名を入力してください。');
+      Alert.alert('入力エラー', '食品・料理名を入力してください。');
       return;
     }
+
+    // 倍率/割合を掛け合わせた最終栄養数値を計算
+    const mult = recordMode === 'ocr' ? portionPercentage / 100 : portionMultiplier;
+
+    const finalCal = Math.round((Number(caloriesInput) || 0) * mult);
+    const finalP = Number(((Number(proteinInput) || 0) * mult).toFixed(1));
+    const finalF = Number(((Number(fatInput) || 0) * mult).toFixed(1));
+    const finalC = Number(((Number(carbsInput) || 0) * mult).toFixed(1));
+    const finalNa = Number(((Number(sodiumInput) || 0) * mult).toFixed(1));
+
     await handleSaveMeal({
       name: mealNameInput,
       mealType,
-      calories: Number(caloriesInput) || 0,
-      protein: Number(proteinInput) || 0,
-      fat: Number(fatInput) || 0,
-      carbs: Number(carbsInput) || 0,
-      sodium: Number(sodiumInput) || 0
+      calories: finalCal,
+      protein: finalP,
+      fat: finalF,
+      carbs: finalC,
+      sodium: finalNa,
+      photoUrl: selectedImageUri || '',
+      memo: recordMode === 'ocr' ? `【成分表示モード】摂取量: ${portionPercentage}%` : `【料理写真モード】量: ${portionMultiplier}倍`
     });
+
+    // リセット
+    setSelectedImageUri(null);
+    setBase64Image(null);
+    setAiAnalysisResult(null);
     setMealNameInput('');
     setCaloriesInput('');
     setProteinInput('');
     setFatInput('');
     setCarbsInput('');
     setSodiumInput('');
+    setPortionMultiplier(1.0);
+    setPortionPercentage(100);
     setIsPhotoModalOpen(false);
   };
 
-  // チャット栄養解析（固定Workerプロキシ経由）
+  // チャット栄養解析記録追加
   const handleAddChatMeal = async () => {
     if (!chatInput.trim()) {
       Alert.alert('入力エラー', '食べたものをメッセージで入力してください。');
@@ -138,7 +249,6 @@ export default function NativeApp() {
 
     setLoading(true);
     try {
-      // SECURE_WORKER_PROXY_URL を自動で使用
       const dummyCalories = 250;
       await handleSaveMeal({
         name: chatInput,
@@ -255,6 +365,7 @@ export default function NativeApp() {
                   <Text style={styles.mealDetail}>
                     {log.calories} kcal | P:{log.protein}g F:{log.fat}g C:{log.carbs}g
                   </Text>
+                  {log.memo ? <Text style={styles.mealMemo}>{log.memo}</Text> : null}
                 </View>
                 <TouchableOpacity
                   onPress={() => handleDeleteMeal(log.id)}
@@ -274,81 +385,197 @@ export default function NativeApp() {
           style={[styles.actionBtn, { backgroundColor: '#3b82f6' }]}
           onPress={() => setIsPhotoModalOpen(true)}
         >
-          <Text style={styles.actionBtnText}>📷 写真/手動で記録</Text>
+          <Text style={styles.actionBtnText}>📷 写真 / カメラ記録</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.actionBtn, { backgroundColor: '#8b5cf6' }]}
           onPress={() => setIsChatModalOpen(true)}
         >
-          <Text style={styles.actionBtnText}>💬 チャットで記録</Text>
+          <Text style={styles.actionBtnText}>💬 チャット記録</Text>
         </TouchableOpacity>
       </View>
 
-      {/* 手動・写真記録モーダル */}
+      {/* 📷 写真・カメラ記録モーダル */}
       <Modal visible={isPhotoModalOpen} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>新規食事の記録</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="食品名 (例: 鮭おにぎり)"
-              placeholderTextColor="#94a3b8"
-              value={mealNameInput}
-              onChangeText={setMealNameInput}
-            />
-            <View style={styles.rowInputs}>
-              <TextInput
-                style={[styles.input, { flex: 1, marginRight: 5 }]}
-                placeholder="カロリー(kcal)"
-                placeholderTextColor="#94a3b8"
-                keyboardType="numeric"
-                value={caloriesInput}
-                onChangeText={setCaloriesInput}
-              />
-              <TextInput
-                style={[styles.input, { flex: 1, marginLeft: 5 }]}
-                placeholder="タンパク質(g)"
-                placeholderTextColor="#94a3b8"
-                keyboardType="numeric"
-                value={proteinInput}
-                onChangeText={setProteinInput}
-              />
-            </View>
-            <View style={styles.rowInputs}>
-              <TextInput
-                style={[styles.input, { flex: 1, marginRight: 5 }]}
-                placeholder="脂質(g)"
-                placeholderTextColor="#94a3b8"
-                keyboardType="numeric"
-                value={fatInput}
-                onChangeText={setFatInput}
-              />
-              <TextInput
-                style={[styles.input, { flex: 1, marginLeft: 5 }]}
-                placeholder="炭水化物(g)"
-                placeholderTextColor="#94a3b8"
-                keyboardType="numeric"
-                value={carbsInput}
-                onChangeText={setCarbsInput}
-              />
-            </View>
+          <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>📷 食事・栄養表示の記録</Text>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: '#64748b' }]}
-                onPress={() => setIsPhotoModalOpen(false)}
-              >
-                <Text style={styles.modalBtnText}>キャンセル</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: '#10b981' }]}
-                onPress={handleAddManualMeal}
-              >
-                <Text style={styles.modalBtnText}>追加保存</Text>
-              </TouchableOpacity>
+              {/* 撮影モード選択タブ */}
+              <View style={styles.modeTabContainer}>
+                <TouchableOpacity
+                  style={[styles.modeTab, recordMode === 'ocr' && styles.activeModeTab]}
+                  onPress={() => setRecordMode('ocr')}
+                >
+                  <Text style={[styles.modeTabText, recordMode === 'ocr' && styles.activeModeTabText]}>
+                    📄 成分表示ラベル
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modeTab, recordMode === 'dish' && styles.activeModeTab]}
+                  onPress={() => setRecordMode('dish')}
+                >
+                  <Text style={[styles.modeTabText, recordMode === 'dish' && styles.activeModeTabText]}>
+                    🍱 料理写真
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modeTab, recordMode === 'manual' && styles.activeModeTab]}
+                  onPress={() => setRecordMode('manual')}
+                >
+                  <Text style={[styles.modeTabText, recordMode === 'manual' && styles.activeModeTabText]}>
+                    ✍️ 手動入力
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* モード別のカメラ・ボタン案内 */}
+              {recordMode !== 'manual' && (
+                <View style={styles.cameraBtnRow}>
+                  <TouchableOpacity
+                    style={[styles.cameraActionBtn, { backgroundColor: '#0284c7' }]}
+                    onPress={handleTakePhoto}
+                  >
+                    <Text style={styles.cameraActionBtnText}>📸 カメラで撮影</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.cameraActionBtn, { backgroundColor: '#475569' }]}
+                    onPress={handlePickImage}
+                  >
+                    <Text style={styles.cameraActionBtnText}>🖼️ ライブラリから選択</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* 写真プレビュー & AI解析中スピナー */}
+              {selectedImageUri && (
+                <View style={styles.previewContainer}>
+                  <Image source={{ uri: selectedImageUri }} style={styles.previewImage} />
+                  {analyzing && (
+                    <View style={styles.analyzingOverlay}>
+                      <ActivityIndicator size="large" color="#38bdf8" />
+                      <Text style={styles.analyzingText}>{progressMsg}</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* 量の調整コントローラー */}
+              {recordMode === 'ocr' && (
+                <View style={styles.portionBox}>
+                  <Text style={styles.portionTitle}>⚖️ 食べた割合の調整 (基準値に対して)</Text>
+                  <View style={styles.portionBtnRow}>
+                    {[25, 50, 75, 100, 150, 200].map((pct) => (
+                      <TouchableOpacity
+                        key={pct}
+                        style={[styles.portionBtn, portionPercentage === pct && styles.activePortionBtn]}
+                        onPress={() => setPortionPercentage(pct)}
+                      >
+                        <Text style={[styles.portionBtnText, portionPercentage === pct && styles.activePortionBtnText]}>
+                          {pct}%
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {recordMode === 'dish' && (
+                <View style={styles.portionBox}>
+                  <Text style={styles.portionTitle}>🍽️ 食べた量の倍率調整</Text>
+                  <View style={styles.portionBtnRow}>
+                    {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((mult) => (
+                      <TouchableOpacity
+                        key={mult}
+                        style={[styles.portionBtn, portionMultiplier === mult && styles.activePortionBtn]}
+                        onPress={() => setPortionMultiplier(mult)}
+                      >
+                        <Text style={[styles.portionBtnText, portionMultiplier === mult && styles.activePortionBtnText]}>
+                          {mult}倍
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* フォーム調整入力 */}
+              <Text style={styles.inputLabel}>食品・料理名</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="例: 鮭おにぎり / サラダ"
+                placeholderTextColor="#94a3b8"
+                value={mealNameInput}
+                onChangeText={setMealNameInput}
+              />
+
+              <View style={styles.rowInputs}>
+                <View style={{ flex: 1, marginRight: 5 }}>
+                  <Text style={styles.inputLabel}>カロリー (kcal)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={caloriesInput}
+                    onChangeText={setCaloriesInput}
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: 5 }}>
+                  <Text style={styles.inputLabel}>タンパク質 (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={proteinInput}
+                    onChangeText={setProteinInput}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.rowInputs}>
+                <View style={{ flex: 1, marginRight: 5 }}>
+                  <Text style={styles.inputLabel}>脂質 (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={fatInput}
+                    onChangeText={setFatInput}
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: 5 }}>
+                  <Text style={styles.inputLabel}>炭水化物 (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={carbsInput}
+                    onChangeText={setCarbsInput}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalBtn, { backgroundColor: '#64748b' }]}
+                  onPress={() => setIsPhotoModalOpen(false)}
+                >
+                  <Text style={styles.modalBtnText}>キャンセル</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalBtn, { backgroundColor: '#10b981' }]}
+                  onPress={handleSavePhotoMealRecord}
+                >
+                  <Text style={styles.modalBtnText}>
+                    {recordMode === 'ocr'
+                      ? `記録 (${portionPercentage}%)`
+                      : recordMode === 'dish'
+                      ? `記録 (${portionMultiplier}倍)`
+                      : '手動保存'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
 
@@ -384,7 +611,7 @@ export default function NativeApp() {
         </View>
       </Modal>
 
-      {/* 設定モーダル (目標設定のみ表示し、API/URL設定は隠蔽カプセル化) */}
+      {/* 設定モーダル */}
       <Modal visible={isSettingsModalOpen} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -582,6 +809,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2
   },
+  mealMemo: {
+    color: '#38bdf8',
+    fontSize: 11,
+    marginTop: 2
+  },
   deleteButton: {
     backgroundColor: '#ef4444',
     paddingHorizontal: 10,
@@ -614,32 +846,132 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    padding: 20
+    padding: 16
   },
   modalContent: {
     backgroundColor: '#1e293b',
     borderRadius: 12,
-    padding: 20,
+    padding: 18,
     borderWidth: 1,
-    borderColor: '#334155'
+    borderColor: '#334155',
+    marginVertical: 20
   },
   modalTitle: {
     color: '#f8fafc',
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 6
+    marginBottom: 12
   },
   modalSub: {
     color: '#94a3b8',
     fontSize: 12,
     marginBottom: 12
   },
+  modeTabContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#0f172a',
+    borderRadius: 8,
+    padding: 4,
+    marginBottom: 14
+  },
+  modeTab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 6
+  },
+  activeModeTab: {
+    backgroundColor: '#3b82f6'
+  },
+  modeTabText: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: 'bold'
+  },
+  activeModeTabText: {
+    color: '#ffffff'
+  },
+  cameraBtnRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12
+  },
+  cameraActionBtn: {
+    flex: 0.48,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center'
+  },
+  cameraActionBtnText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 13
+  },
+  previewContainer: {
+    position: 'relative',
+    height: 180,
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginBottom: 12
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%'
+  },
+  analyzingOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  analyzingText: {
+    color: '#38bdf8',
+    fontWeight: 'bold',
+    marginTop: 8,
+    fontSize: 13
+  },
+  portionBox: {
+    backgroundColor: '#0f172a',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 12
+  },
+  portionTitle: {
+    color: '#cbd5e1',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginBottom: 6
+  },
+  portionBtnRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between'
+  },
+  portionBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    backgroundColor: '#1e293b',
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#334155'
+  },
+  activePortionBtn: {
+    backgroundColor: '#10b981',
+    borderColor: '#10b981'
+  },
+  portionBtnText: {
+    color: '#94a3b8',
+    fontSize: 12
+  },
+  activePortionBtnText: {
+    color: '#ffffff',
+    fontWeight: 'bold'
+  },
   inputLabel: {
     color: '#94a3b8',
     fontSize: 12,
-    marginTop: 8,
-    marginBottom: 4
+    marginTop: 4,
+    marginBottom: 2
   },
   input: {
     backgroundColor: '#0f172a',
@@ -648,7 +980,7 @@ const styles = StyleSheet.create({
     borderColor: '#334155',
     borderRadius: 8,
     padding: 10,
-    marginBottom: 10
+    marginBottom: 8
   },
   rowInputs: {
     flexDirection: 'row'
