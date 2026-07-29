@@ -7,33 +7,31 @@ import PhotoRecordModal from './components/PhotoRecordModal.jsx';
 import ChatRecordModal from './components/ChatRecordModal.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import { nutritionDb } from './shared_modules/db/nutritionDb.js';
+import { safeStorage } from './shared_modules/storage/safeStorage.js';
 
 export default function App() {
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [mealLogs, setMealLogs] = useState([]);
-  
+
   // モーダル開閉ステート
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
-  // APIキー (LocalStorage 保持)
-  const [apiKeys, setApiKeys] = useState(() => ({
-    geminiKey: localStorage.getItem('eiyou_gemini_key') || '',
-    deepSeekKey: localStorage.getItem('eiyou_deepseek_key') || '',
-    workerUrl: localStorage.getItem('eiyou_worker_url') || ''
-  }));
+  // APIキー
+  const [apiKeys, setApiKeys] = useState({
+    geminiKey: safeStorage.getItemSync('eiyou_gemini_key', ''),
+    deepSeekKey: safeStorage.getItemSync('eiyou_deepseek_key', ''),
+    workerUrl: safeStorage.getItemSync('eiyou_worker_url', '')
+  });
 
-  // 日別目標値 (LocalStorage / State 保持)
+  // 日別目標値
   const [userGoals, setUserGoals] = useState(() => {
-    const saved = localStorage.getItem('eiyou_user_goals');
-    return saved ? JSON.parse(saved) : {
-      calories: 2200,
-      protein: 75,
-      fat: 60,
-      carbs: 280,
-      sodium: 7.0
-    };
+    const saved = safeStorage.getItemSync('eiyou_user_goals', '');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return { calories: 2200, protein: 75, fat: 60, carbs: 280, sodium: 7.0 };
   });
 
   // 日付変更時のデータロード
@@ -55,12 +53,9 @@ export default function App() {
     await nutritionDb.addMealLog(mealData);
     await loadMealLogs();
 
-    // 紙吹雪アニメーション (目標到達時や新規記録の祝福)
-    confetti({
-      particleCount: 50,
-      spread: 60,
-      origin: { y: 0.8 }
-    });
+    try {
+      confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 } });
+    } catch (e) {}
   };
 
   // 食事削除処理
@@ -71,69 +66,82 @@ export default function App() {
     }
   };
 
-  // APIキー保存
-  const handleSaveApiKeys = (keys) => {
-    setApiKeys(keys);
-    localStorage.setItem('eiyou_gemini_key', keys.geminiKey);
-    localStorage.setItem('eiyou_deepseek_key', keys.deepSeekKey);
-    localStorage.setItem('eiyou_worker_url', keys.workerUrl);
-  };
+  // 設定の更新保存
+  const handleSaveSettings = (newKeys, newGoals) => {
+    setApiKeys(newKeys);
+    setUserGoals(newGoals);
 
-  // 目標値保存
-  const handleSaveUserGoals = (goals) => {
-    setUserGoals(goals);
-    localStorage.setItem('eiyou_user_goals', JSON.stringify(goals));
+    safeStorage.setItem('eiyou_gemini_key', newKeys.geminiKey);
+    safeStorage.setItem('eiyou_deepseek_key', newKeys.deepSeekKey);
+    safeStorage.setItem('eiyou_worker_url', newKeys.workerUrl);
+    safeStorage.setItem('eiyou_user_goals', JSON.stringify(newGoals));
   };
 
   return (
-    <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '20px 16px 60px 16px' }}>
-      
-      {/* ヘッダー */}
+    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans">
       <Header
         selectedDate={selectedDate}
         onDateChange={setSelectedDate}
-        onOpenPhotoModal={() => setIsPhotoModalOpen(true)}
-        onOpenChatModal={() => setIsChatModalOpen(true)}
-        onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
+        onOpenSettings={() => setIsSettingsModalOpen(true)}
       />
 
-      <main>
-        {/* 本日の進捗ダッシュボード */}
-        <Dashboard mealLogs={mealLogs} userGoals={userGoals} />
+      <main className="flex-1 max-w-4xl w-full mx-auto p-4 space-y-6">
+        <Dashboard
+          mealLogs={mealLogs}
+          userGoals={userGoals}
+          selectedDate={selectedDate}
+        />
 
-        {/* 本日の食事ログ一覧 */}
-        <MealLogList mealLogs={mealLogs} onDeleteMeal={handleDeleteMeal} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <button
+            onClick={() => setIsPhotoModalOpen(true)}
+            className="flex items-center justify-center gap-3 p-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl font-bold shadow-lg shadow-blue-500/20 transition-all transform hover:-translate-y-0.5 active:translate-y-0"
+          >
+            <span className="text-2xl">📷</span>
+            <span>写真 / OCRで記録</span>
+          </button>
+
+          <button
+            onClick={() => setIsChatModalOpen(true)}
+            className="flex items-center justify-center gap-3 p-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-xl font-bold shadow-lg shadow-purple-500/20 transition-all transform hover:-translate-y-0.5 active:translate-y-0"
+          >
+            <span className="text-2xl">💬</span>
+            <span>チャットで栄養記録</span>
+          </button>
+        </div>
+
+        <MealLogList
+          mealLogs={mealLogs}
+          onDeleteMeal={handleDeleteMeal}
+        />
       </main>
 
-      {/* 写真記録モーダル */}
-      <PhotoRecordModal
-        isOpen={isPhotoModalOpen}
-        onClose={() => setIsPhotoModalOpen(false)}
-        onSaveMeal={handleSaveMeal}
-        apiKeys={apiKeys}
-        selectedDate={selectedDate}
-      />
+      {isPhotoModalOpen && (
+        <PhotoRecordModal
+          selectedDate={selectedDate}
+          apiKeys={apiKeys}
+          onClose={() => setIsPhotoModalOpen(false)}
+          onSave={handleSaveMeal}
+        />
+      )}
 
-      {/* チャット記録モーダル */}
-      <ChatRecordModal
-        isOpen={isChatModalOpen}
-        onClose={() => setIsChatModalOpen(false)}
-        onSaveMeal={handleSaveMeal}
-        apiKeys={apiKeys}
-        selectedDate={selectedDate}
-      />
+      {isChatModalOpen && (
+        <ChatRecordModal
+          selectedDate={selectedDate}
+          apiKeys={apiKeys}
+          onClose={() => setIsChatModalOpen(false)}
+          onSave={handleSaveMeal}
+        />
+      )}
 
-      {/* 設定＆データ入出力モーダル */}
-      <SettingsModal
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-        apiKeys={apiKeys}
-        onSaveApiKeys={handleSaveApiKeys}
-        userGoals={userGoals}
-        onSaveUserGoals={handleSaveUserGoals}
-        onRefreshData={loadMealLogs}
-      />
-
+      {isSettingsModalOpen && (
+        <SettingsModal
+          apiKeys={apiKeys}
+          userGoals={userGoals}
+          onClose={() => setIsSettingsModalOpen(false)}
+          onSave={handleSaveSettings}
+        />
+      )}
     </div>
   );
 }

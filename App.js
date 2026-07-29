@@ -1,6 +1,7 @@
 /**
  * React Native / Expo アプリのネイティブルートコンポーネント
- * Web 版 (Vite) では src/App.jsx を直接使用し、
- * ネイティブ版 (Expo) では registerRootComponent 経由で呼び出されます。
+ * Native 環境 (Android / iOS) では src/App.native.jsx を安全に呼び出します。
  */
-export { default } from './src/App';
+import NativeApp from './src/App.native';
+
+export default NativeApp;
