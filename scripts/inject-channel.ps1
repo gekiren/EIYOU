@@ -1,20 +1,15 @@
-# staging チャンネルを AndroidManifest.xml および expo-updates.properties に注入するスクリプト
+# EAS Update (staging) 設定注入スクリプト
+$propFile = "android\app\src\main\assets\expo-updates.properties"
 
-$updatesPropsPath = "android\app\src\main\assets\expo-updates.properties"
-$assetsDir = "android\app\src\main\assets"
-
-if (!(Test-Path $assetsDir)) {
-    New-Item -ItemType Directory -Path $assetsDir -Force | Out-Null
-}
-
-$updatesConfig = @"
-EXPO_SDK_VERSION=51.0.0
+$content = @"
+EXPO_SDK_VERSION=52.0.0
 EXPO_UPDATES_CHECK_ON_LAUNCH=ALWAYS
-EXPO_UPDATES_LAUNCH_WAIT_MS=0
+EXPO_UPDATES_LAUNCH_WAIT_MS=3000
 EXPO_UPDATE_URL=https://u.expo.dev/40d3122e-aa40-4c58-a7a2-86e180420480
+EXPO_CHANNEL_NAME=staging
 EXPO_RELEASE_CHANNEL=staging
 EXPO_RUNTIME_VERSION=1.0.0
 "@
 
-Set-Content -Path $updatesPropsPath -Value $updatesConfig -Encoding UTF8
-Write-Host "Injected staging channel into $updatesPropsPath"
+Set-Content -Path $propFile -Value $content -Encoding UTF8
+Write-Host "Injected staging channel and 3000ms launch wait into $propFile"
