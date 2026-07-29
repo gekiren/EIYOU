@@ -4,6 +4,10 @@ import { createWorker } from 'tesseract.js';
  * オンデバイス tesseract.js によるテキスト抽出
  */
 export async function extractNutritionTextWithOCR(base64Image) {
+  if (typeof window === 'undefined' || !window.document) {
+    // Native環境ではTesseract Workerが動かないためスキップ
+    return { text: '', confidence: 0 };
+  }
   let worker = null;
   try {
     worker = await createWorker('jpn+eng');
@@ -13,7 +17,7 @@ export async function extractNutritionTextWithOCR(base64Image) {
       confidence: data.confidence || 0
     };
   } catch (err) {
-    console.error('Tesseract OCR Error:', err);
+    console.warn('Tesseract OCR Skip/Error:', err);
     return { text: '', confidence: 0 };
   } finally {
     if (worker) {
