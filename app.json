@@ -2,6 +2,7 @@
   "expo": {
     "name": "EIYOU",
     "slug": "eiyou",
+    "owner": "gekirennomads-organization",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
@@ -26,9 +27,7 @@
     "updates": {
       "url": "https://u.expo.dev/40d3122e-aa40-4c58-a7a2-86e180420480"
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "plugins": [
       [
         "expo-image-picker",
