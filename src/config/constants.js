@@ -4,5 +4,5 @@
  * ユーザーが変更・参照できないようにカプセル化します。
  */
 
-// 固定 Worker URL (デプロイされた eiyou-ai-proxy のエンドポイント)
-export const SECURE_WORKER_PROXY_URL = 'https://eiyou-ai-proxy.workers.dev';
+// 正しい Cloudflare Worker プロキシ URL
+export const SECURE_WORKER_PROXY_URL = 'https://eiyou-ai-proxy.toshi-diyil.workers.dev';
