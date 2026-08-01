@@ -31,7 +31,11 @@
   - `master`（本番用）ブランチでの直接作業、および `origin/master` への直接コミットは禁止。
   - 通常の追加・変更・デバッグ作業はすべて `staging` ブランチで行うこと。
   - **【重要】master ブランチへのマージ制限**: `staging` から `master` へのマージ（および `origin/master` への Push）は、作業完了時に自動で実行してはならない。必ずユーザーから個別に明確な実行指示（「マスターへマージしてください」等）があった場合のみ実行すること。
-- **【最重要】OTA (EAS Update) の優先適用**:
+- **【最重要】OTA (EAS Update) の優先適用と動作規約**:
   - ネイティブライブラリの新規追加や権限変更を伴わない UIの修正、レイアウト変更、ロジック改善、AIプロンプト調整、バグ修正等のすべての変更は、ビルド回数を抑えるため **ネイティブAPKの再ビルドを行わず、必ず OTA (EAS Update) 更新を最優先で適用すること**。
+  - **Release ビルドでの検証必須**: Debug ビルド (`assembleDebug`) では Expo の仕様により `expo-updates` モジュールが無効化 (`Updates.isEnabled = false`) されるため、`checkForUpdateAsync()` でエラーが発生する。OTA 機能を動かすためには、必ず **Release ビルド (`assembleRelease`)** で APK を作成すること。
+  - **チャネルヘッダーの設定保持**: EAS Update サーバーへのリクエストに `channel-name` ヘッダーが必要なため、`app.json` の `updates.url`（`?channel-name=staging`）および `AndroidManifest.xml`（`expo.modules.updates.EXPO_CHANNEL_NAME`）にチャネル設定を必ず保持させること。
+  - **ローカル APK ビルド時の事前 JS バンドル埋め込み**: ローカルで Gradle ビルドを行う際は、Metro サーバー非接続時の `Unable to load script` エラーを防止するため、事前に `npx expo export:embed --platform android --dev false --entry-file index.js --bundle-output "android/app/src/main/assets/index.android.bundle" --assets-dest "android/app/src/main/res"` を実行してオフライン JS バンドルを事前埋め込みしてからビルドを行うこと。
+
 
 

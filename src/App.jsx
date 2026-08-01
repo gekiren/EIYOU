@@ -6,6 +6,7 @@ import MealLogList from './components/MealLogList.jsx';
 import PhotoRecordModal from './components/PhotoRecordModal.jsx';
 import ChatRecordModal from './components/ChatRecordModal.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
+import EditMealModal from './components/EditMealModal.jsx';
 import { nutritionDb } from './shared_modules/db/nutritionDb.js';
 import { safeStorage } from './shared_modules/storage/safeStorage.js';
 
@@ -17,6 +18,7 @@ export default function App() {
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [editingMeal, setEditingMeal] = useState(null);
 
   // APIキー
   const [apiKeys, setApiKeys] = useState({
@@ -66,6 +68,13 @@ export default function App() {
     }
   };
 
+  // 食事更新処理
+  const handleUpdateMeal = async (id, updateData) => {
+    await nutritionDb.updateMealLog(id, updateData);
+    setEditingMeal(null);
+    await loadMealLogs();
+  };
+
   // 設定の更新保存
   const handleSaveSettings = (newKeys, newGoals) => {
     setApiKeys(newKeys);
@@ -113,6 +122,7 @@ export default function App() {
         <MealLogList
           mealLogs={mealLogs}
           onDeleteMeal={handleDeleteMeal}
+          onEditMeal={(log) => setEditingMeal(log)}
         />
       </main>
 
@@ -140,6 +150,14 @@ export default function App() {
           userGoals={userGoals}
           onClose={() => setIsSettingsModalOpen(false)}
           onSave={handleSaveSettings}
+        />
+      )}
+
+      {editingMeal && (
+        <EditMealModal
+          mealLog={editingMeal}
+          onClose={() => setEditingMeal(null)}
+          onSave={handleUpdateMeal}
         />
       )}
     </div>
