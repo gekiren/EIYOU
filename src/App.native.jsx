@@ -965,8 +965,8 @@ export default function NativeApp() {
             />
 
             {/* カテゴリ/ソートタブ */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12, maxHeight: 36 }}>
-              <View style={{ flexDirection: 'row', gap: 6 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12, height: 40 }} contentContainerStyle={{ alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
                 {[
                   { id: 'favorites', label: `⭐ お気に入り (${favorites.length})` },
                   { id: 'recent', label: '履歴順' },
@@ -981,11 +981,14 @@ export default function NativeApp() {
                     onPress={() => setHistoryTab(tab.id)}
                     style={[
                       styles.portionBtn,
-                      { paddingHorizontal: 12, paddingVertical: 6 },
+                      { paddingHorizontal: 12, paddingVertical: 6, height: 34, justifyContent: 'center', alignItems: 'center' },
                       historyTab === tab.id && styles.activePortionBtn
                     ]}
                   >
-                    <Text style={[styles.portionBtnText, historyTab === tab.id && styles.activePortionBtnText]}>
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.portionBtnText, historyTab === tab.id && styles.activePortionBtnText]}
+                    >
                       {tab.label}
                     </Text>
                   </TouchableOpacity>
@@ -2215,6 +2218,19 @@ const styles = StyleSheet.create({
   },
   modalBtnText: {
     color: '#ffffff',
+    fontWeight: 'bold'
+  },
+  saveBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#334155'
+  },
+  saveBtnText: {
+    color: '#ffffff',
+    fontSize: 14,
     fontWeight: 'bold'
   }
 });
