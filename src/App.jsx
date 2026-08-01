@@ -9,6 +9,7 @@ import SettingsModal from './components/SettingsModal.jsx';
 import EditMealModal from './components/EditMealModal.jsx';
 import { nutritionDb } from './shared_modules/db/nutritionDb.js';
 import { safeStorage } from './shared_modules/storage/safeStorage.js';
+import { obsidianSyncService } from './shared_modules/obsidian/obsidianSyncService.js';
 
 export default function App() {
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -36,6 +37,17 @@ export default function App() {
     return { calories: 2200, protein: 75, fat: 60, carbs: 280, sodium: 7.0 };
   });
 
+  // アプリ起動時の Obsidian 自動一括同期チェック
+  useEffect(() => {
+    obsidianSyncService.getConfig().then(cfg => {
+      if (cfg.enabled && cfg.autoSyncOnLaunch !== false) {
+        obsidianSyncService.syncAllMealLogs(userGoals).catch(err => {
+          console.warn('[ObsidianSync] Launch auto sync failed:', err);
+        });
+      }
+    });
+  }, []);
+
   // 日付変更時のデータロード
   const loadMealLogs = async () => {
     try {
@@ -55,6 +67,12 @@ export default function App() {
     await nutritionDb.addMealLog(mealData);
     await loadMealLogs();
 
+    // Obsidian バックグラウンド同期
+    const targetDate = mealData.date || selectedDate;
+    obsidianSyncService.syncDateLogs(targetDate, userGoals).catch(e => {
+      console.warn('[ObsidianSync] Background sync date error:', e);
+    });
+
     try {
       confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 } });
     } catch (e) {}
@@ -65,6 +83,11 @@ export default function App() {
     if (window.confirm('この食事記録を削除しますか？')) {
       await nutritionDb.deleteMealLog(id);
       await loadMealLogs();
+
+      // Obsidian バックグラウンド同期
+      obsidianSyncService.syncDateLogs(selectedDate, userGoals).catch(e => {
+        console.warn('[ObsidianSync] Background sync date error:', e);
+      });
     }
   };
 
@@ -73,6 +96,12 @@ export default function App() {
     await nutritionDb.updateMealLog(id, updateData);
     setEditingMeal(null);
     await loadMealLogs();
+
+    // Obsidian バックグラウンド同期
+    const targetDate = updateData.date || selectedDate;
+    obsidianSyncService.syncDateLogs(targetDate, userGoals).catch(e => {
+      console.warn('[ObsidianSync] Background sync date error:', e);
+    });
   };
 
   // 設定の更新保存

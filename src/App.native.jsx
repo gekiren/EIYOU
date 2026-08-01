@@ -21,6 +21,11 @@ import { safeStorage } from './shared_modules/storage/safeStorage.js';
 import { nutritionDb } from './shared_modules/db/nutritionDb.js';
 import { analyzeMealPhoto } from './shared_modules/ai/nutritionAiService.js';
 import { SECURE_WORKER_PROXY_URL } from './config/constants.js';
+import { obsidianSyncService } from './shared_modules/obsidian/obsidianSyncService.js';
+
+if (typeof window !== 'undefined' && FileSystem && FileSystem.StorageAccessFramework) {
+  window.expoFileSystemSAF = { StorageAccessFramework: FileSystem.StorageAccessFramework };
+}
 
 export default function NativeApp() {
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -71,9 +76,27 @@ export default function NativeApp() {
   // 目標設定
   const [userGoals, setUserGoals] = useState({ calories: 2200, protein: 75, fat: 60, carbs: 280, sodium: 7.0 });
 
+  // Obsidian 連携ステート
+  const [obsidianEnabled, setObsidianEnabled] = useState(false);
+  const [obsidianVaultUri, setObsidianVaultUri] = useState('');
+  const [obsidianSaveMode, setObsidianSaveMode] = useState('dedicated'); // 'dedicated' | 'append' | 'individual'
+  const [obsidianFolderName, setObsidianFolderName] = useState('EIYOU');
+  const [obsidianAutoSyncOnLaunch, setObsidianAutoSyncOnLaunch] = useState(true);
+  const [syncStatusMsg, setSyncStatusMsg] = useState('');
+  const [settingsTab, setSettingsTab] = useState('goals'); // 'goals' | 'obsidian' | 'data'
+
   useEffect(() => {
     loadSettings();
     loadMealLogs();
+
+    // Obsidian 起動時自動同期
+    obsidianSyncService.getConfig().then(cfg => {
+      if (cfg.enabled && cfg.autoSyncOnLaunch !== false) {
+        obsidianSyncService.syncAllMealLogs(userGoals).catch(e => {
+          console.warn('[ObsidianSync] Native launch auto sync failed:', e);
+        });
+      }
+    });
   }, [selectedDate]);
 
   const loadSettings = async () => {
@@ -82,6 +105,42 @@ export default function NativeApp() {
       try {
         setUserGoals(JSON.parse(savedGoals));
       } catch (e) {}
+    }
+    const cfg = await obsidianSyncService.getConfig();
+    setObsidianEnabled(cfg.enabled || false);
+    setObsidianVaultUri(cfg.vaultUri || '');
+    setObsidianSaveMode(cfg.saveMode || 'dedicated');
+    setObsidianFolderName(cfg.folderName || 'EIYOU');
+    setObsidianAutoSyncOnLaunch(cfg.autoSyncOnLaunch !== false);
+  };
+
+  const handleSelectVaultFolder = async () => {
+    if (FileSystem && FileSystem.StorageAccessFramework) {
+      try {
+        const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (permissions.granted) {
+          setObsidianVaultUri(permissions.directoryUri);
+          setSyncStatusMsg('Vault フォルダ権限を取得しました');
+        }
+      } catch (e) {
+        Alert.alert('フォルダ選択エラー', e.message);
+      }
+    }
+  };
+
+  const handleManualSyncAll = async () => {
+    setSyncStatusMsg('一括同期中...');
+    try {
+      const res = await obsidianSyncService.syncAllMealLogs(userGoals);
+      if (res.success) {
+        setSyncStatusMsg(`一括同期完了: ${res.count || 1}件を出力/更新しました。`);
+        Alert.alert('同期完了', `${res.count || 1}件のノートをObsidianへエクスポートしました。`);
+      } else {
+        setSyncStatusMsg(`同期失敗: ${res.reason || '設定を確認してください'}`);
+        Alert.alert('同期失敗', res.reason || '設定を確認してください');
+      }
+    } catch (e) {
+      setSyncStatusMsg('同期エラー: ' + e.message);
     }
   };
 
@@ -359,8 +418,15 @@ export default function NativeApp() {
 
   const handleSaveSettings = async () => {
     await safeStorage.setItem('eiyou_user_goals', JSON.stringify(userGoals));
+    await obsidianSyncService.saveConfig({
+      enabled: obsidianEnabled,
+      vaultUri: obsidianVaultUri,
+      saveMode: obsidianSaveMode,
+      folderName: obsidianFolderName,
+      autoSyncOnLaunch: obsidianAutoSyncOnLaunch
+    });
     setIsSettingsModalOpen(false);
-    Alert.alert('保存完了', '目標設定を保存しました。');
+    Alert.alert('保存完了', '設定を保存しました。');
   };
 
   // OTA手動アップデートチェック処理
@@ -824,53 +890,193 @@ export default function NativeApp() {
       </Modal>
 
       {/* 設定モーダル */}
-      <Modal visible={isSettingsModalOpen} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>⚙️ 目標栄養設定</Text>
+      <Modal visible={isSettingsModalOpen} animationType="slide" transparent onRequestClose={() => setIsSettingsModalOpen(false)}>
+        <View style={[styles.modalOverlay, { justifyContent: 'center', alignItems: 'center' }]}>
+          <View style={[styles.modalContent, { width: '100%', height: '85%', padding: 16, display: 'flex', flexDirection: 'column', overflow: 'hidden' }]}>
+            <Text style={styles.modalTitle}>⚙️ アプリ設定</Text>
 
-            <Text style={styles.inputLabel}>目標カロリー (kcal)</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              value={String(userGoals.calories)}
-              onChangeText={(text) => setUserGoals({ ...userGoals, calories: Number(text) || 0 })}
-            />
-
-            <Text style={styles.inputLabel}>目標タンパク質 (g)</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              value={String(userGoals.protein)}
-              onChangeText={(text) => setUserGoals({ ...userGoals, protein: Number(text) || 0 })}
-            />
-
-            <Text style={styles.inputLabel}>目標脂質 (g)</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              value={String(userGoals.fat)}
-              onChangeText={(text) => setUserGoals({ ...userGoals, fat: Number(text) || 0 })}
-            />
-
-            <Text style={styles.inputLabel}>目標炭水化物 (g)</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              value={String(userGoals.carbs)}
-              onChangeText={(text) => setUserGoals({ ...userGoals, carbs: Number(text) || 0 })}
-            />
-
-            <View style={{ marginTop: 16, marginBottom: 8 }}>
-              <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: '#8b5cf6', marginLeft: 0, paddingVertical: 12, alignItems: 'center' }]}
-                onPress={handleCheckOTAUpdate}
-              >
-                <Text style={styles.modalBtnText}>🔄 アプリのOTA更新を手動チェック</Text>
-              </TouchableOpacity>
+            {/* タブナビゲーション */}
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16, borderBottomWidth: 1, borderBottomColor: '#334155', paddingBottom: 8 }}>
+              {[
+                { key: 'goals', label: '🎯 栄養目標' },
+                { key: 'obsidian', label: '📄 Obsidian' },
+                { key: 'data', label: '📁 その他' }
+              ].map(tab => (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    alignItems: 'center',
+                    backgroundColor: settingsTab === tab.key ? '#334155' : 'transparent'
+                  }}
+                  onPress={() => setSettingsTab(tab.key)}
+                >
+                  <Text style={{
+                    color: settingsTab === tab.key ? (tab.key === 'goals' ? '#38bdf8' : tab.key === 'obsidian' ? '#c084fc' : '#34d399') : '#94a3b8',
+                    fontWeight: 'bold',
+                    fontSize: 13
+                  }}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
-            <View style={styles.modalButtons}>
+            <ScrollView
+              style={{ flex: 1, width: '100%' }}
+              contentContainerStyle={{ paddingBottom: 30, flexGrow: 1 }}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* 1. 栄養目標設定タブ */}
+              {settingsTab === 'goals' && (
+                <View>
+                  <Text style={[styles.inputLabel, { color: '#38bdf8', fontWeight: 'bold', fontSize: 16, marginBottom: 12 }]}>
+                    🎯 日別栄養目標の設定
+                  </Text>
+
+                  <Text style={styles.inputLabel}>目標カロリー (kcal)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={String(userGoals.calories)}
+                    onChangeText={(text) => setUserGoals({ ...userGoals, calories: Number(text) || 0 })}
+                  />
+
+                  <Text style={styles.inputLabel}>目標タンパク質 (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={String(userGoals.protein)}
+                    onChangeText={(text) => setUserGoals({ ...userGoals, protein: Number(text) || 0 })}
+                  />
+
+                  <Text style={styles.inputLabel}>目標脂質 (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={String(userGoals.fat)}
+                    onChangeText={(text) => setUserGoals({ ...userGoals, fat: Number(text) || 0 })}
+                  />
+
+                  <Text style={styles.inputLabel}>目標炭水化物 (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={String(userGoals.carbs)}
+                    onChangeText={(text) => setUserGoals({ ...userGoals, carbs: Number(text) || 0 })}
+                  />
+                </View>
+              )}
+
+              {/* 2. Obsidian Vault 自動連携設定タブ */}
+              {settingsTab === 'obsidian' && (
+                <View style={{ padding: 12, borderRadius: 10, backgroundColor: 'rgba(30, 41, 59, 0.6)', borderWidth: 1, borderColor: '#334155' }}>
+                  <Text style={[styles.inputLabel, { color: '#c084fc', fontWeight: 'bold', fontSize: 16, marginBottom: 12 }]}>
+                    📄 Obsidian Vault 自動連携設定
+                  </Text>
+
+                  <TouchableOpacity
+                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 }}
+                    onPress={() => setObsidianEnabled(!obsidianEnabled)}
+                  >
+                    <Text style={{ color: '#f8fafc', fontSize: 14 }}>Obsidian 自動連携</Text>
+                    <Text style={{ color: obsidianEnabled ? '#c084fc' : '#94a3b8', fontWeight: 'bold' }}>
+                      {obsidianEnabled ? '有効 (ON)' : '無効 (OFF)'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {obsidianEnabled && (
+                    <View style={{ marginTop: 8 }}>
+                      <Text style={styles.inputLabel}>Obsidian Vault 保存先フォルダ</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                        <TextInput
+                          style={[styles.input, { flex: 1, marginBottom: 0, backgroundColor: '#0f172a' }]}
+                          value={obsidianVaultUri || '未選択 (SAFで選択)'}
+                          editable={false}
+                        />
+                        <TouchableOpacity
+                          style={[styles.modalBtn, { backgroundColor: '#8b5cf6', paddingHorizontal: 12, paddingVertical: 10 }]}
+                          onPress={handleSelectVaultFolder}
+                        >
+                          <Text style={styles.modalBtnText}>フォルダ選択</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <Text style={styles.inputLabel}>保存モード選択</Text>
+                      {[
+                        { key: 'dedicated', label: 'a) 専用ノート (EIYOU_YYYY-MM-DD.md)' },
+                        { key: 'append', label: 'b) デイリーノート追記 (Daily/YYYY-MM-DD.md)' },
+                        { key: 'individual', label: 'c) 個別ノート (EIYOU_Nutrition_Log.md)' }
+                      ].map(item => (
+                        <TouchableOpacity
+                          key={item.key}
+                          style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}
+                          onPress={() => setObsidianSaveMode(item.key)}
+                        >
+                          <Text style={{ color: obsidianSaveMode === item.key ? '#c084fc' : '#94a3b8', marginRight: 8, fontSize: 16 }}>
+                            {obsidianSaveMode === item.key ? '🔘' : '⚪'}
+                          </Text>
+                          <Text style={{ color: '#f8fafc', fontSize: 13 }}>{item.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+
+                      <Text style={[styles.inputLabel, { marginTop: 10 }]}>保存先サブフォルダ名</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={obsidianFolderName}
+                        onChangeText={setObsidianFolderName}
+                        placeholder="EIYOU"
+                        placeholderTextColor="#64748b"
+                      />
+
+                    <TouchableOpacity
+                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 }}
+                      onPress={() => setObsidianAutoSyncOnLaunch(!obsidianAutoSyncOnLaunch)}
+                    >
+                      <Text style={{ color: '#f8fafc', fontSize: 13 }}>起動時に自動一括同期</Text>
+                      <Text style={{ color: obsidianAutoSyncOnLaunch ? '#c084fc' : '#94a3b8' }}>
+                        {obsidianAutoSyncOnLaunch ? 'ON' : 'OFF'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.modalBtn, { backgroundColor: 'rgba(139, 92, 246, 0.3)', borderColor: '#8b5cf6', borderWidth: 1, marginLeft: 0, marginTop: 10, paddingVertical: 10, alignItems: 'center' }]}
+                      onPress={handleManualSyncAll}
+                    >
+                      <Text style={[styles.modalBtnText, { color: '#c084fc' }]}>全食事ログを今すぐ Obsidian へ同期</Text>
+                    </TouchableOpacity>
+
+                    {syncStatusMsg ? (
+                      <Text style={{ color: '#38bdf8', fontSize: 12, marginTop: 6 }}>{syncStatusMsg}</Text>
+                    ) : null}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* 3. データ・その他タブ */}
+            {settingsTab === 'data' && (
+              <View>
+                <Text style={[styles.inputLabel, { color: '#34d399', fontWeight: 'bold', fontSize: 16, marginBottom: 12 }]}>
+                  📁 データ & システム設定
+                </Text>
+
+                <View style={{ marginTop: 12, marginBottom: 8 }}>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, { backgroundColor: '#8b5cf6', marginLeft: 0, paddingVertical: 12, alignItems: 'center' }]}
+                    onPress={handleCheckOTAUpdate}
+                  >
+                    <Text style={styles.modalBtnText}>🔄 アプリのOTA更新を手動チェック</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+            </ScrollView>
+
+            <View style={[styles.modalButtons, { width: '100%', paddingTop: 12, borderTopWidth: 1, borderTopColor: '#334155' }]}>
               <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: '#64748b' }]}
                 onPress={() => setIsSettingsModalOpen(false)}
