@@ -20,6 +20,15 @@ export default function SettingsModal({
   const [carbsGoal, setCarbsGoal] = useState(userGoals.carbs || 280);
   const [sodiumGoal, setSodiumGoal] = useState(userGoals.sodium || 7.0);
 
+  // 目標設定モード & PFC比率ステート
+  // 'calorie_pfc': 1. カロリー + PFC% 指定
+  // 'pfc_gram': 2. PFC(g) 直接指定
+  // 'protein_pfc': 3. P(g) + PFC% 指定
+  const [goalMode, setGoalMode] = useState('calorie_pfc');
+  const [pRatio, setPRatio] = useState(30);
+  const [fRatio, setFRatio] = useState(20);
+  const [cRatio, setCRatio] = useState(50);
+
   // Obsidian 連携ステート
   const [obsidianEnabled, setObsidianEnabled] = useState(false);
   const [obsidianVaultUri, setObsidianVaultUri] = useState('');
@@ -31,6 +40,27 @@ export default function SettingsModal({
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
 
   useEffect(() => {
+    if (userGoals) {
+      const cal = Number(userGoals.calories) || 2200;
+      const p = Number(userGoals.protein) || 75;
+      const f = Number(userGoals.fat) || 60;
+      const c = Number(userGoals.carbs) || 280;
+      setCaloriesGoal(cal);
+      setProteinGoal(p);
+      setFatGoal(f);
+      setCarbsGoal(c);
+      setSodiumGoal(userGoals.sodium || 7.0);
+
+      if (cal > 0) {
+        const pr = Math.round(((p * 4) / cal) * 100);
+        const fr = Math.round(((f * 9) / cal) * 100);
+        const cr = 100 - pr - fr;
+        setPRatio(pr > 0 ? pr : 30);
+        setFRatio(fr > 0 ? fr : 20);
+        setCRatio(cr > 0 ? cr : 50);
+      }
+    }
+
     // Obsidian 設定読み込み
     obsidianSyncService.getConfig().then(cfg => {
       setObsidianEnabled(cfg.enabled || false);
@@ -39,7 +69,74 @@ export default function SettingsModal({
       setObsidianFolderName(cfg.folderName || 'EIYOU');
       setObsidianAutoSyncOnLaunch(cfg.autoSyncOnLaunch !== false);
     });
-  }, []);
+  }, [userGoals]);
+
+  // モード1: カロリー ＆ PFC% 指定の計算
+  const handleCalorieAndRatioChange = (newCal, newP, newF, newC) => {
+    const cal = newCal !== undefined ? newCal : caloriesGoal;
+    const pr = newP !== undefined ? newP : pRatio;
+    const fr = newF !== undefined ? newF : fRatio;
+    const cr = newC !== undefined ? newC : cRatio;
+
+    setCaloriesGoal(cal);
+    setPRatio(pr);
+    setFRatio(fr);
+    setCRatio(cr);
+
+    const totalCal = Number(cal) || 0;
+    const pG = Math.round((totalCal * (Number(pr) / 100)) / 4);
+    const fG = Math.round((totalCal * (Number(fr) / 100)) / 9);
+    const cG = Math.round((totalCal * (Number(cr) / 100)) / 4);
+
+    setProteinGoal(pG);
+    setFatGoal(fG);
+    setCarbsGoal(cG);
+  };
+
+  // モード2: PFC(g) 直接指定の計算
+  const handleGramChange = (newP, newF, newC) => {
+    const pG = newP !== undefined ? Number(newP) : Number(proteinGoal);
+    const fG = newF !== undefined ? Number(newF) : Number(fatGoal);
+    const cG = newC !== undefined ? Number(newC) : Number(carbsGoal);
+
+    if (newP !== undefined) setProteinGoal(newP);
+    if (newF !== undefined) setFatGoal(newF);
+    if (newC !== undefined) setCarbsGoal(newC);
+
+    const totalCal = Math.round(pG * 4 + fG * 9 + cG * 4);
+    setCaloriesGoal(totalCal);
+
+    if (totalCal > 0) {
+      const pr = Math.round(((pG * 4) / totalCal) * 100);
+      const fr = Math.round(((fG * 9) / totalCal) * 100);
+      const cr = 100 - pr - fr;
+      setPRatio(pr);
+      setFRatio(fr);
+      setCRatio(cr);
+    }
+  };
+
+  // モード3: P(g) ＆ PFC% 指定の計算
+  const handleProteinAndRatioChange = (newP, newPR, newFR, newCR) => {
+    const pG = newP !== undefined ? Number(newP) : Number(proteinGoal);
+    const pr = newPR !== undefined ? Number(newPR) : Number(pRatio);
+    const fr = newFR !== undefined ? Number(newFR) : Number(fRatio);
+    const cr = newCR !== undefined ? Number(newCR) : Number(cRatio);
+
+    if (newP !== undefined) setProteinGoal(newP);
+    if (newPR !== undefined) setPRatio(newPR);
+    if (newFR !== undefined) setFRatio(newFR);
+    if (newCR !== undefined) setCRatio(newCR);
+
+    const pCal = pG * 4;
+    const totalCal = pr > 0 ? Math.round(pCal / (pr / 100)) : 0;
+    const fG = Math.round((totalCal * (fr / 100)) / 9);
+    const cG = Math.round((totalCal * (cr / 100)) / 4);
+
+    setCaloriesGoal(totalCal);
+    setFatGoal(fG);
+    setCarbsGoal(cG);
+  };
 
   const handleSaveAll = async () => {
     onSaveUserGoals({
@@ -190,46 +287,197 @@ export default function SettingsModal({
               <span>日別栄養目標の設定</span>
             </h3>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>目標カロリー (kcal)</label>
-                <input
-                  type="number"
-                  value={caloriesGoal}
-                  onChange={(e) => setCaloriesGoal(e.target.value)}
-                  className="input-field"
-                />
+            {/* モード選択タブ */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>設定方法の選択</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', backgroundColor: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setGoalMode('calorie_pfc')}
+                  style={{
+                    padding: '8px 4px', fontSize: '0.75rem', fontWeight: 600, borderRadius: '8px', border: 'none', cursor: 'pointer',
+                    backgroundColor: goalMode === 'calorie_pfc' ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                    color: goalMode === 'calorie_pfc' ? '#38bdf8' : 'var(--text-muted)'
+                  }}
+                >
+                  1. カロリー+%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGoalMode('pfc_gram')}
+                  style={{
+                    padding: '8px 4px', fontSize: '0.75rem', fontWeight: 600, borderRadius: '8px', border: 'none', cursor: 'pointer',
+                    backgroundColor: goalMode === 'pfc_gram' ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                    color: goalMode === 'pfc_gram' ? '#38bdf8' : 'var(--text-muted)'
+                  }}
+                >
+                  2. PFC(g)直接
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGoalMode('protein_pfc')}
+                  style={{
+                    padding: '8px 4px', fontSize: '0.75rem', fontWeight: 600, borderRadius: '8px', border: 'none', cursor: 'pointer',
+                    backgroundColor: goalMode === 'protein_pfc' ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                    color: goalMode === 'protein_pfc' ? '#38bdf8' : 'var(--text-muted)'
+                  }}
+                >
+                  3. P(g)+%指定
+                </button>
               </div>
+            </div>
 
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>目標タンパク質 (g)</label>
-                <input
-                  type="number"
-                  value={proteinGoal}
-                  onChange={(e) => setProteinGoal(e.target.value)}
-                  className="input-field"
-                />
-              </div>
+            {/* モード1: カロリー ＆ PFC% 指定 */}
+            {goalMode === 'calorie_pfc' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>目標カロリー (kcal)</label>
+                  <input
+                    type="number"
+                    value={caloriesGoal}
+                    onChange={(e) => handleCalorieAndRatioChange(e.target.value, undefined, undefined, undefined)}
+                    className="input-field"
+                  />
+                </div>
 
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>目標脂質 (g)</label>
-                <input
-                  type="number"
-                  value={fatGoal}
-                  onChange={(e) => setFatGoal(e.target.value)}
-                  className="input-field"
-                />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: '#60a5fa', display: 'block', marginBottom: '4px' }}>P (タンパク質 %)</label>
+                    <input
+                      type="number"
+                      value={pRatio}
+                      onChange={(e) => handleCalorieAndRatioChange(undefined, e.target.value, undefined, undefined)}
+                      className="input-field"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: '#f87171', display: 'block', marginBottom: '4px' }}>F (脂質 %)</label>
+                    <input
+                      type="number"
+                      value={fRatio}
+                      onChange={(e) => handleCalorieAndRatioChange(undefined, undefined, e.target.value, undefined)}
+                      className="input-field"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: '#fbbf24', display: 'block', marginBottom: '4px' }}>C (炭水化物 %)</label>
+                    <input
+                      type="number"
+                      value={cRatio}
+                      onChange={(e) => handleCalorieAndRatioChange(undefined, undefined, undefined, e.target.value)}
+                      className="input-field"
+                    />
+                  </div>
+                </div>
               </div>
+            )}
 
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>目標炭水化物 (g)</label>
-                <input
-                  type="number"
-                  value={carbsGoal}
-                  onChange={(e) => setCarbsGoal(e.target.value)}
-                  className="input-field"
-                />
+            {/* モード2: PFC(g) 直接指定 */}
+            {goalMode === 'pfc_gram' && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '16px' }}>
+                <div>
+                  <label style={{ fontSize: '0.75rem', color: '#60a5fa', display: 'block', marginBottom: '4px' }}>タンパク質 (g)</label>
+                  <input
+                    type="number"
+                    value={proteinGoal}
+                    onChange={(e) => handleGramChange(e.target.value, undefined, undefined)}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.75rem', color: '#f87171', display: 'block', marginBottom: '4px' }}>脂質 (g)</label>
+                  <input
+                    type="number"
+                    value={fatGoal}
+                    onChange={(e) => handleGramChange(undefined, e.target.value, undefined)}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.75rem', color: '#fbbf24', display: 'block', marginBottom: '4px' }}>炭水化物 (g)</label>
+                  <input
+                    type="number"
+                    value={carbsGoal}
+                    onChange={(e) => handleGramChange(undefined, undefined, e.target.value)}
+                    className="input-field"
+                  />
+                </div>
               </div>
+            )}
+
+            {/* モード3: P(g) ＆ PFC% 指定 */}
+            {goalMode === 'protein_pfc' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: '#60a5fa', display: 'block', marginBottom: '4px' }}>タンパク質 (g)</label>
+                  <input
+                    type="number"
+                    value={proteinGoal}
+                    onChange={(e) => handleProteinAndRatioChange(e.target.value, undefined, undefined, undefined)}
+                    className="input-field"
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: '#60a5fa', display: 'block', marginBottom: '4px' }}>P (割合 %)</label>
+                    <input
+                      type="number"
+                      value={pRatio}
+                      onChange={(e) => handleProteinAndRatioChange(undefined, e.target.value, undefined, undefined)}
+                      className="input-field"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: '#f87171', display: 'block', marginBottom: '4px' }}>F (割合 %)</label>
+                    <input
+                      type="number"
+                      value={fRatio}
+                      onChange={(e) => handleProteinAndRatioChange(undefined, undefined, e.target.value, undefined)}
+                      className="input-field"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: '#fbbf24', display: 'block', marginBottom: '4px' }}>C (割合 %)</label>
+                    <input
+                      type="number"
+                      value={cRatio}
+                      onChange={(e) => handleProteinAndRatioChange(undefined, undefined, undefined, e.target.value)}
+                      className="input-field"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 計算結果サマリーカード */}
+            <div style={{
+              backgroundColor: 'rgba(30, 41, 59, 0.6)',
+              borderRadius: '10px',
+              padding: '12px',
+              border: '1px solid rgba(148, 163, 184, 0.2)',
+              marginBottom: '12px'
+            }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '6px' }}>📊 決定される目標値とPFC比率</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', marginBottom: '8px' }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f8fafc' }}>
+                  🔥 {caloriesGoal} <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>kcal</span>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#60a5fa' }}>
+                  P: {proteinGoal}g <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>({pRatio}%)</span>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#f87171' }}>
+                  F: {fatGoal}g <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>({fRatio}%)</span>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#fbbf24' }}>
+                  C: {carbsGoal}g <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>({cRatio}%)</span>
+                </div>
+              </div>
+              {(Number(pRatio) + Number(fRatio) + Number(cRatio) !== 100) && (goalMode === 'calorie_pfc' || goalMode === 'protein_pfc') && (
+                <div style={{ fontSize: '0.7rem', color: '#f87171', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '4px 8px', borderRadius: '4px' }}>
+                  ⚠️ PFC比率の合計が 100% になっていません (現在: {Number(pRatio) + Number(fRatio) + Number(cRatio)}%)
+                </div>
+              )}
             </div>
           </div>
         )}

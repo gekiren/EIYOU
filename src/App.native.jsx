@@ -84,6 +84,12 @@ export default function NativeApp() {
   // 目標設定
   const [userGoals, setUserGoals] = useState({ calories: 2200, protein: 75, fat: 60, carbs: 280, sodium: 7.0 });
 
+  // 目標設定モード & PFC比率ステート (Native)
+  const [goalMode, setGoalMode] = useState('calorie_pfc'); // 'calorie_pfc' | 'pfc_gram' | 'protein_pfc'
+  const [pRatio, setPRatio] = useState(30);
+  const [fRatio, setFRatio] = useState(20);
+  const [cRatio, setCRatio] = useState(50);
+
   // Obsidian 連携ステート
   const [obsidianEnabled, setObsidianEnabled] = useState(false);
   const [obsidianVaultUri, setObsidianVaultUri] = useState('');
@@ -108,12 +114,30 @@ export default function NativeApp() {
     });
   }, [selectedDate]);
 
+  const updateRatiosFromGoals = (goals) => {
+    const cal = Number(goals.calories) || 0;
+    const p = Number(goals.protein) || 0;
+    const f = Number(goals.fat) || 0;
+    if (cal > 0) {
+      const pr = Math.round(((p * 4) / cal) * 100);
+      const fr = Math.round(((f * 9) / cal) * 100);
+      const cr = 100 - pr - fr;
+      setPRatio(pr > 0 ? pr : 30);
+      setFRatio(fr > 0 ? fr : 20);
+      setCRatio(cr > 0 ? cr : 50);
+    }
+  };
+
   const loadSettings = async () => {
     const savedGoals = await safeStorage.getItem('eiyou_user_goals', '');
     if (savedGoals) {
       try {
-        setUserGoals(JSON.parse(savedGoals));
+        const parsed = JSON.parse(savedGoals);
+        setUserGoals(parsed);
+        updateRatiosFromGoals(parsed);
       } catch (e) {}
+    } else {
+      updateRatiosFromGoals(userGoals);
     }
     const cfg = await obsidianSyncService.getConfig();
     setObsidianEnabled(cfg.enabled || false);
@@ -121,6 +145,81 @@ export default function NativeApp() {
     setObsidianSaveMode(cfg.saveMode || 'dedicated');
     setObsidianFolderName(cfg.folderName || 'EIYOU');
     setObsidianAutoSyncOnLaunch(cfg.autoSyncOnLaunch !== false);
+  };
+
+  // モード1: カロリー ＆ PFC% 指定の計算 (Native)
+  const handleCalorieAndRatioChangeNative = (newCal, newP, newF, newC) => {
+    const cal = newCal !== undefined ? (Number(newCal) || 0) : userGoals.calories;
+    const pr = newP !== undefined ? (Number(newP) || 0) : pRatio;
+    const fr = newF !== undefined ? (Number(newF) || 0) : fRatio;
+    const cr = newC !== undefined ? (Number(newC) || 0) : cRatio;
+
+    if (newP !== undefined) setPRatio(pr);
+    if (newF !== undefined) setFRatio(fr);
+    if (newC !== undefined) setCRatio(cr);
+
+    const pG = Math.round((cal * (pr / 100)) / 4);
+    const fG = Math.round((cal * (fr / 100)) / 9);
+    const cG = Math.round((cal * (cr / 100)) / 4);
+
+    setUserGoals({
+      ...userGoals,
+      calories: cal,
+      protein: pG,
+      fat: fG,
+      carbs: cG
+    });
+  };
+
+  // モード2: PFC(g) 直接指定の計算 (Native)
+  const handleGramChangeNative = (newP, newF, newC) => {
+    const pG = newP !== undefined ? (Number(newP) || 0) : userGoals.protein;
+    const fG = newF !== undefined ? (Number(newF) || 0) : userGoals.fat;
+    const cG = newC !== undefined ? (Number(newC) || 0) : userGoals.carbs;
+
+    const totalCal = Math.round(pG * 4 + fG * 9 + cG * 4);
+
+    if (totalCal > 0) {
+      const pr = Math.round(((pG * 4) / totalCal) * 100);
+      const fr = Math.round(((fG * 9) / totalCal) * 100);
+      const cr = 100 - pr - fr;
+      setPRatio(pr);
+      setFRatio(fr);
+      setCRatio(cr);
+    }
+
+    setUserGoals({
+      ...userGoals,
+      calories: totalCal,
+      protein: pG,
+      fat: fG,
+      carbs: cG
+    });
+  };
+
+  // モード3: P(g) ＆ PFC% 指定の計算 (Native)
+  const handleProteinAndRatioChangeNative = (newP, newPR, newFR, newCR) => {
+    const pG = newP !== undefined ? (Number(newP) || 0) : userGoals.protein;
+    const pr = newPR !== undefined ? (Number(newPR) || 0) : pRatio;
+    const fr = newFR !== undefined ? (Number(newFR) || 0) : fRatio;
+    const cr = newCR !== undefined ? (Number(newCR) || 0) : cRatio;
+
+    if (newPR !== undefined) setPRatio(pr);
+    if (newFR !== undefined) setFRatio(fr);
+    if (newCR !== undefined) setCRatio(cr);
+
+    const pCal = pG * 4;
+    const totalCal = pr > 0 ? Math.round(pCal / (pr / 100)) : 0;
+    const fG = Math.round((totalCal * (fr / 100)) / 9);
+    const cG = Math.round((totalCal * (cr / 100)) / 4);
+
+    setUserGoals({
+      ...userGoals,
+      calories: totalCal,
+      protein: pG,
+      fat: fG,
+      carbs: cG
+    });
   };
 
   const handleSelectVaultFolder = async () => {
@@ -1220,37 +1319,166 @@ export default function NativeApp() {
                     🎯 日別栄養目標の設定
                   </Text>
 
-                  <Text style={styles.inputLabel}>目標カロリー (kcal)</Text>
-                  <TextInput
-                    style={styles.input}
-                    keyboardType="numeric"
-                    value={String(userGoals.calories)}
-                    onChangeText={(text) => setUserGoals({ ...userGoals, calories: Number(text) || 0 })}
-                  />
+                  {/* モード選択タブ */}
+                  <Text style={[styles.inputLabel, { fontSize: 12, color: '#94a3b8', marginBottom: 6 }]}>設定方法の選択</Text>
+                  <View style={{ flexDirection: 'row', backgroundColor: '#0f172a', borderRadius: 8, padding: 3, marginBottom: 16 }}>
+                    {[
+                      { key: 'calorie_pfc', label: '1. カロリー+%' },
+                      { key: 'pfc_gram', label: '2. PFC(g)直接' },
+                      { key: 'protein_pfc', label: '3. P(g)+%' }
+                    ].map(m => (
+                      <TouchableOpacity
+                        key={m.key}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 8,
+                          borderRadius: 6,
+                          alignItems: 'center',
+                          backgroundColor: goalMode === m.key ? 'rgba(56, 189, 248, 0.25)' : 'transparent'
+                        }}
+                        onPress={() => setGoalMode(m.key)}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: 'bold', color: goalMode === m.key ? '#38bdf8' : '#94a3b8' }}>
+                          {m.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
 
-                  <Text style={styles.inputLabel}>目標タンパク質 (g)</Text>
-                  <TextInput
-                    style={styles.input}
-                    keyboardType="numeric"
-                    value={String(userGoals.protein)}
-                    onChangeText={(text) => setUserGoals({ ...userGoals, protein: Number(text) || 0 })}
-                  />
+                  {/* モード1: カロリー ＆ PFC% 指定 */}
+                  {goalMode === 'calorie_pfc' && (
+                    <View style={{ marginBottom: 12 }}>
+                      <Text style={styles.inputLabel}>目標カロリー (kcal)</Text>
+                      <TextInput
+                        style={styles.input}
+                        keyboardType="numeric"
+                        value={String(userGoals.calories)}
+                        onChangeText={(text) => handleCalorieAndRatioChangeNative(text, undefined, undefined, undefined)}
+                      />
 
-                  <Text style={styles.inputLabel}>目標脂質 (g)</Text>
-                  <TextInput
-                    style={styles.input}
-                    keyboardType="numeric"
-                    value={String(userGoals.fat)}
-                    onChangeText={(text) => setUserGoals({ ...userGoals, fat: Number(text) || 0 })}
-                  />
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.inputLabel, { color: '#60a5fa', fontSize: 12 }]}>P (タンパク質 %)</Text>
+                          <TextInput
+                            style={styles.input}
+                            keyboardType="numeric"
+                            value={String(pRatio)}
+                            onChangeText={(text) => handleCalorieAndRatioChangeNative(undefined, text, undefined, undefined)}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.inputLabel, { color: '#f87171', fontSize: 12 }]}>F (脂質 %)</Text>
+                          <TextInput
+                            style={styles.input}
+                            keyboardType="numeric"
+                            value={String(fRatio)}
+                            onChangeText={(text) => handleCalorieAndRatioChangeNative(undefined, undefined, text, undefined)}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.inputLabel, { color: '#fbbf24', fontSize: 12 }]}>C (炭水化物 %)</Text>
+                          <TextInput
+                            style={styles.input}
+                            keyboardType="numeric"
+                            value={String(cRatio)}
+                            onChangeText={(text) => handleCalorieAndRatioChangeNative(undefined, undefined, undefined, text)}
+                          />
+                        </View>
+                      </View>
+                    </View>
+                  )}
 
-                  <Text style={styles.inputLabel}>目標炭水化物 (g)</Text>
-                  <TextInput
-                    style={styles.input}
-                    keyboardType="numeric"
-                    value={String(userGoals.carbs)}
-                    onChangeText={(text) => setUserGoals({ ...userGoals, carbs: Number(text) || 0 })}
-                  />
+                  {/* モード2: PFC(g) 直接指定 */}
+                  {goalMode === 'pfc_gram' && (
+                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.inputLabel, { color: '#60a5fa', fontSize: 12 }]}>タンパク質 (g)</Text>
+                        <TextInput
+                          style={styles.input}
+                          keyboardType="numeric"
+                          value={String(userGoals.protein)}
+                          onChangeText={(text) => handleGramChangeNative(text, undefined, undefined)}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.inputLabel, { color: '#f87171', fontSize: 12 }]}>脂質 (g)</Text>
+                        <TextInput
+                          style={styles.input}
+                          keyboardType="numeric"
+                          value={String(userGoals.fat)}
+                          onChangeText={(text) => handleGramChangeNative(undefined, text, undefined)}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.inputLabel, { color: '#fbbf24', fontSize: 12 }]}>炭水化物 (g)</Text>
+                        <TextInput
+                          style={styles.input}
+                          keyboardType="numeric"
+                          value={String(userGoals.carbs)}
+                          onChangeText={(text) => handleGramChangeNative(undefined, undefined, text)}
+                        />
+                      </View>
+                    </View>
+                  )}
+
+                  {/* モード3: P(g) ＆ PFC% 指定 */}
+                  {goalMode === 'protein_pfc' && (
+                    <View style={{ marginBottom: 12 }}>
+                      <Text style={[styles.inputLabel, { color: '#60a5fa' }]}>タンパク質 (g)</Text>
+                      <TextInput
+                        style={styles.input}
+                        keyboardType="numeric"
+                        value={String(userGoals.protein)}
+                        onChangeText={(text) => handleProteinAndRatioChangeNative(text, undefined, undefined, undefined)}
+                      />
+
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.inputLabel, { color: '#60a5fa', fontSize: 12 }]}>P (割合 %)</Text>
+                          <TextInput
+                            style={styles.input}
+                            keyboardType="numeric"
+                            value={String(pRatio)}
+                            onChangeText={(text) => handleProteinAndRatioChangeNative(undefined, text, undefined, undefined)}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.inputLabel, { color: '#f87171', fontSize: 12 }]}>F (割合 %)</Text>
+                          <TextInput
+                            style={styles.input}
+                            keyboardType="numeric"
+                            value={String(fRatio)}
+                            onChangeText={(text) => handleProteinAndRatioChangeNative(undefined, undefined, text, undefined)}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.inputLabel, { color: '#fbbf24', fontSize: 12 }]}>C (割合 %)</Text>
+                          <TextInput
+                            style={styles.input}
+                            keyboardType="numeric"
+                            value={String(cRatio)}
+                            onChangeText={(text) => handleProteinAndRatioChangeNative(undefined, undefined, undefined, text)}
+                          />
+                        </View>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* サマリーカード */}
+                  <View style={{ backgroundColor: 'rgba(30, 41, 59, 0.7)', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#334155', marginBottom: 12 }}>
+                    <Text style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>📊 決定される目標値とPFC比率</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                      <Text style={{ color: '#f8fafc', fontWeight: 'bold', fontSize: 14 }}>🔥 {userGoals.calories} kcal</Text>
+                      <Text style={{ color: '#60a5fa', fontSize: 13 }}>P: {userGoals.protein}g ({pRatio}%)</Text>
+                      <Text style={{ color: '#f87171', fontSize: 13 }}>F: {userGoals.fat}g ({fRatio}%)</Text>
+                      <Text style={{ color: '#fbbf24', fontSize: 13 }}>C: {userGoals.carbs}g ({cRatio}%)</Text>
+                    </View>
+                    {(Number(pRatio) + Number(fRatio) + Number(cRatio) !== 100) && (goalMode === 'calorie_pfc' || goalMode === 'protein_pfc') && (
+                      <Text style={{ fontSize: 11, color: '#f87171', marginTop: 6, backgroundColor: 'rgba(239, 68, 68, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                        ⚠️ PFC比率の合計が 100% になっていません (現在: {Number(pRatio) + Number(fRatio) + Number(cRatio)}%)
+                      </Text>
+                    )}
+                  </View>
                 </View>
               )}
 
