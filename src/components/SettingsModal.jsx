@@ -232,11 +232,11 @@ export default function SettingsModal({
       <div className="glass-panel animate-fade-in" style={{
         width: '100%',
         maxWidth: '540px',
-        maxHeight: '85vh',
+        maxHeight: '90vh',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
         padding: '24px',
-        paddingBottom: '32px',
+        paddingBottom: '60px',
         position: 'relative'
       }}>
         <button onClick={onClose} className="btn-secondary" style={{ position: 'absolute', top: '16px', right: '16px', padding: '8px' }}>

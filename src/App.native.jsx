@@ -1405,7 +1405,7 @@ export default function NativeApp() {
       {/* 設定モーダル */}
       <Modal visible={isSettingsModalOpen} animationType="slide" transparent onRequestClose={() => setIsSettingsModalOpen(false)}>
         <View style={[styles.modalOverlay, { justifyContent: 'center', alignItems: 'center' }]}>
-          <View style={[styles.modalContent, { width: '100%', height: '85%', padding: 16, display: 'flex', flexDirection: 'column', overflow: 'hidden' }]}>
+          <View style={[styles.modalContent, { width: '100%', maxHeight: '90%', height: '90%', padding: 16, display: 'flex', flexDirection: 'column', overflow: 'hidden' }]}>
             <Text style={styles.modalTitle}>⚙️ アプリ設定</Text>
 
             {/* タブナビゲーション */}
@@ -1439,7 +1439,8 @@ export default function NativeApp() {
 
             <ScrollView
               style={{ flex: 1, width: '100%' }}
-              contentContainerStyle={{ paddingBottom: 30, flexGrow: 1 }}
+              contentContainerStyle={{ paddingBottom: 100, flexGrow: 1 }}
+              nestedScrollEnabled={true}
               showsVerticalScrollIndicator={true}
               keyboardShouldPersistTaps="handled"
             >
