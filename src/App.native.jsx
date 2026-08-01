@@ -14,6 +14,7 @@ import {
   Image
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system';
 import * as Updates from 'expo-updates';
 import { safeStorage } from './shared_modules/storage/safeStorage.js';
@@ -100,57 +101,131 @@ export default function NativeApp() {
     }
   };
 
-  // カメラ撮影処理
-  const handleTakePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('権限エラー', 'カメラを使用するにはカメラへのアクセス許可が必要です。');
-      return;
-    }
+  // 画像のリサイズ・軽量化・Base64変換
+  const processAndOptimizeImage = async (imageUri) => {
+    // 撮影直後にまずプレビューとローディングを画面に即座に表示
+    setSelectedImageUri(imageUri);
+    setAnalyzing(true);
+    setProgressMsg('画像を最適化中...');
 
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      quality: 0.8,
-      base64: true
-    });
+    try {
+      // 最大幅 1024px にリサイズ＆圧縮
+      const manipResult = await ImageManipulator.manipulateAsync(
+        imageUri,
+        [{ resize: { width: 1024 } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      );
+      
+      if (manipResult.uri) {
+        setSelectedImageUri(manipResult.uri);
+      }
 
-    if (!result.canceled && result.assets && result.assets[0]) {
-      const asset = result.assets[0];
-      setSelectedImageUri(asset.uri);
-      const base64Data = await convertUriToBase64(asset.uri, asset.base64);
+      let base64Data = manipResult.base64;
+      if (!base64Data) {
+        base64Data = await convertUriToBase64(manipResult.uri || imageUri);
+      } else {
+        base64Data = `data:image/jpeg;base64,${base64Data}`;
+      }
+
       if (base64Data) {
         setBase64Image(base64Data);
-        runAiAnalysis(base64Data);
+        await runAiAnalysis(base64Data);
       } else {
-        Alert.alert('画像取得エラー', '写真データの読み込みに失敗しました。');
+        setAnalyzing(false);
+        Alert.alert('画像取得エラー', '写真データの処理に失敗しました。');
       }
+    } catch (e) {
+      console.error('Failed to optimize image:', e);
+      // フォールバック: 元の画像URIでBase64を直接試みる
+      try {
+        const fallbackB64 = await convertUriToBase64(imageUri);
+        if (fallbackB64) {
+          setBase64Image(fallbackB64);
+          await runAiAnalysis(fallbackB64);
+          return;
+        }
+      } catch (errFallback) {
+        console.error('Fallback readAsStringAsync failed:', errFallback);
+      }
+      setAnalyzing(false);
+      Alert.alert('画像処理エラー', '写真の処理中にエラーが発生しました。手動入力をご利用いただけます。');
+    }
+  };
+
+  // カメラ撮影処理 (Modal非同期描画ロック防止 ＆ ハイブリッド自動フォールバック付き)
+  const handleTakePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('権限エラー', 'カメラを使用するにはカメラへのアクセス許可が必要です。');
+        return;
+      }
+
+      // AndroidのModal描画ロック防止のため、カメラ起動前にモーダルを一時隠す
+      setIsPhotoModalOpen(false);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      let result;
+      try {
+        // まずクロップあり (allowsEditing: true) を試行
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          quality: 0.8
+        });
+      } catch (cropErr) {
+        console.warn('Native Crop Intent failed, falling back to non-crop camera mode:', cropErr);
+        // 端末のクロップIntentが失敗した場合はクロップなし (allowsEditing: false) で安全撮影
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ['images'],
+          allowsEditing: false,
+          quality: 0.8
+        });
+      }
+
+      // 撮影完了・復帰後にモーダルを再表示
+      setIsPhotoModalOpen(true);
+
+      if (result && !result.canceled && result.assets && result.assets[0]) {
+        await processAndOptimizeImage(result.assets[0].uri);
+      }
+    } catch (err) {
+      console.error('Camera Launch Error:', err);
+      setIsPhotoModalOpen(true);
+      setAnalyzing(false);
+      Alert.alert('カメラエラー', 'カメラ起動または撮影処理中にエラーが発生しました。');
     }
   };
 
   // アルバムから写真選択
   const handlePickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('権限エラー', '写真を選択するにはライブラリへのアクセス許可が必要です。');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      allowsEditing: true,
-      quality: 0.8,
-      base64: true
-    });
-
-    if (!result.canceled && result.assets && result.assets[0]) {
-      const asset = result.assets[0];
-      setSelectedImageUri(asset.uri);
-      const base64Data = await convertUriToBase64(asset.uri, asset.base64);
-      if (base64Data) {
-        setBase64Image(base64Data);
-        runAiAnalysis(base64Data);
-      } else {
-        Alert.alert('画像取得エラー', 'ライブラリ画像の読み込みに失敗しました。');
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('権限エラー', '写真を選択するにはライブラリへのアクセス許可が必要です。');
+        return;
       }
+
+      // Modal描画ロック防止のため、ギャラリー起動前にモーダルを一時隠す
+      setIsPhotoModalOpen(false);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8
+      });
+
+      setIsPhotoModalOpen(true);
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        await processAndOptimizeImage(result.assets[0].uri);
+      }
+    } catch (err) {
+      console.error('Pick Image Error:', err);
+      setIsPhotoModalOpen(true);
+      setAnalyzing(false);
+      Alert.alert('ライブラリエラー', '写真選択中にエラーが発生しました。');
     }
   };
 

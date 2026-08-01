@@ -16,6 +16,7 @@
     "canvas-confetti": "^1.9.4",
     "dexie": "^4.4.4",
     "expo": "~52.0.0",
+    "expo-image-manipulator": "~13.0.6",
     "expo-image-picker": "~16.0.6",
     "expo-updates": "~0.26.0",
     "lucide-react": "^1.27.0",
