@@ -37,7 +37,15 @@ export default function NativeApp() {
   // モーダル
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+
+  // 履歴追加用ステート
+  const [allHistoryLogs, setAllHistoryLogs] = useState([]);
+  const [favorites, setFavorites] = useState([]);
+  const [historySearchQuery, setHistorySearchQuery] = useState('');
+  const [historyTab, setHistoryTab] = useState('favorites'); // 'favorites' | 'recent' | 'frequent' | 'breakfast' | 'lunch' | 'dinner' | 'snack'
+  const [historyTargetMealType, setHistoryTargetMealType] = useState('lunch');
 
   // 編集モーダル用ステート
   const [editingMealLog, setEditingMealLog] = useState(null);
@@ -88,6 +96,7 @@ export default function NativeApp() {
   useEffect(() => {
     loadSettings();
     loadMealLogs();
+    loadFavorites();
 
     // Obsidian 起動時自動同期
     obsidianSyncService.getConfig().then(cfg => {
@@ -154,6 +163,38 @@ export default function NativeApp() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadFavorites = async () => {
+    try {
+      const favs = await nutritionDb.getFavorites();
+      setFavorites(favs || []);
+      return favs || [];
+    } catch (e) {
+      console.error('Failed to load favorites:', e);
+      return [];
+    }
+  };
+
+  const handleToggleFavorite = async (mealItem) => {
+    await nutritionDb.toggleFavorite(mealItem);
+    await loadFavorites();
+  };
+
+  const handleOpenHistoryModal = async () => {
+    try {
+      const [logs, favs] = await Promise.all([
+        nutritionDb.getAllMealLogs(),
+        loadFavorites()
+      ]);
+      setAllHistoryLogs(logs || []);
+      if ((!favs || favs.length === 0) && historyTab === 'favorites') {
+        setHistoryTab('recent');
+      }
+    } catch (e) {
+      console.error('Failed to load history meal logs:', e);
+    }
+    setIsHistoryModalOpen(true);
   };
 
   // 画像URIから確実にBase64を取得
@@ -638,6 +679,42 @@ export default function NativeApp() {
                   {log.memo ? <Text style={styles.mealMemo}>{log.memo}</Text> : null}
                 </View>
                 <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                  {(() => {
+                    const isFav = favorites.some(f => (f.name || '').trim().toLowerCase() === (log.name || '').trim().toLowerCase());
+                    return (
+                      <TouchableOpacity
+                        onPress={() => handleToggleFavorite(log)}
+                        style={[
+                          styles.editButton,
+                          {
+                            backgroundColor: isFav ? 'rgba(245, 158, 11, 0.2)' : '#334155',
+                            borderColor: isFav ? '#f59e0b' : 'transparent',
+                            borderWidth: isFav ? 1 : 0
+                          }
+                        ]}
+                      >
+                        <Text style={[styles.editButtonText, { color: isFav ? '#f59e0b' : '#94a3b8' }]}>
+                          {isFav ? '★' : '☆'}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })()}
+                  <TouchableOpacity
+                    onPress={() => handleSaveMeal({
+                      name: log.name,
+                      mealType: log.mealType,
+                      calories: log.calories,
+                      protein: log.protein,
+                      fat: log.fat,
+                      carbs: log.carbs,
+                      sodium: log.sodium,
+                      photoUrl: log.photoUrl,
+                      memo: log.memo
+                    })}
+                    style={[styles.editButton, { backgroundColor: '#10b981' }]}
+                  >
+                    <Text style={styles.editButtonText}>再追加</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleOpenEditModal(log)}
                     style={styles.editButton}
@@ -660,19 +737,225 @@ export default function NativeApp() {
       {/* ボトムアクションエリア */}
       <View style={styles.bottomBar}>
         <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: '#3b82f6' }]}
+          style={[styles.actionBtn, { backgroundColor: '#3b82f6', flex: 1 }]}
           onPress={() => setIsPhotoModalOpen(true)}
         >
-          <Text style={styles.actionBtnText}>📷 写真 / カメラ記録</Text>
+          <Text style={styles.actionBtnText}>📷 写真記録</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: '#8b5cf6' }]}
+          style={[styles.actionBtn, { backgroundColor: '#8b5cf6', flex: 1 }]}
           onPress={() => setIsChatModalOpen(true)}
         >
-          <Text style={styles.actionBtnText}>💬 チャット記録</Text>
+          <Text style={styles.actionBtnText}>💬 チャット</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionBtn, { backgroundColor: '#059669', flex: 1 }]}
+          onPress={handleOpenHistoryModal}
+        >
+          <Text style={styles.actionBtnText}>📜 履歴追加</Text>
         </TouchableOpacity>
       </View>
+
+      {/* 📜 履歴選択・追加モーダル */}
+      <Modal visible={isHistoryModalOpen} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '85%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={styles.modalTitle}>📜 履歴から食事を追加</Text>
+              <TouchableOpacity onPress={() => setIsHistoryModalOpen(false)}>
+                <Text style={{ color: '#94a3b8', fontSize: 18, fontWeight: 'bold', padding: 4 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ color: '#94a3b8', fontSize: 12, marginBottom: 12 }}>
+              過去の全記録から選択して「{selectedDate}」に追加します
+            </Text>
+
+            {/* 追加先区分選択 */}
+            <Text style={styles.inputLabel}>追加先の食事区分</Text>
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
+              {[
+                { type: 'breakfast', label: '朝食' },
+                { type: 'lunch', label: '昼食' },
+                { type: 'dinner', label: '夕食' },
+                { type: 'snack', label: '間食' }
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.type}
+                  onPress={() => setHistoryTargetMealType(item.type)}
+                  style={[
+                    styles.portionBtn,
+                    { flex: 1, paddingVertical: 8 },
+                    historyTargetMealType === item.type && styles.activePortionBtn
+                  ]}
+                >
+                  <Text style={[styles.portionBtnText, historyTargetMealType === item.type && styles.activePortionBtnText]}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* 検索入力 */}
+            <TextInput
+              style={[styles.input, { marginBottom: 10 }]}
+              placeholder="料理名で検索..."
+              placeholderTextColor="#94a3b8"
+              value={historySearchQuery}
+              onChangeText={setHistorySearchQuery}
+            />
+
+            {/* カテゴリ/ソートタブ */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12, maxHeight: 36 }}>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {[
+                  { id: 'favorites', label: `⭐ お気に入り (${favorites.length})` },
+                  { id: 'recent', label: '履歴順' },
+                  { id: 'frequent', label: 'よく食べる' },
+                  { id: 'breakfast', label: '朝食' },
+                  { id: 'lunch', label: '昼食' },
+                  { id: 'dinner', label: '夕食' },
+                  { id: 'snack', label: '間食' }
+                ].map((tab) => (
+                  <TouchableOpacity
+                    key={tab.id}
+                    onPress={() => setHistoryTab(tab.id)}
+                    style={[
+                      styles.portionBtn,
+                      { paddingHorizontal: 12, paddingVertical: 6 },
+                      historyTab === tab.id && styles.activePortionBtn
+                    ]}
+                  >
+                    <Text style={[styles.portionBtnText, historyTab === tab.id && styles.activePortionBtnText]}>
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            {/* 履歴・お気に入りリスト */}
+            <ScrollView style={{ flex: 1, maxHeight: 380 }}>
+              {(() => {
+                let filtered = allHistoryLogs;
+                if (historyTab === 'favorites') {
+                  filtered = favorites;
+                } else if (historyTab === 'frequent') {
+                  const map = new Map();
+                  allHistoryLogs.forEach((item) => {
+                    const key = (item.name || '').trim().toLowerCase();
+                    if (!key) return;
+                    if (!map.has(key)) {
+                      map.set(key, { count: 1, sample: item });
+                    } else {
+                      map.get(key).count += 1;
+                    }
+                  });
+                  filtered = Array.from(map.values())
+                    .sort((a, b) => b.count - a.count)
+                    .map((e) => ({ ...e.sample, frequentCount: e.count }));
+                } else if (['breakfast', 'lunch', 'dinner', 'snack'].includes(historyTab)) {
+                  filtered = allHistoryLogs.filter((log) => log.mealType === historyTab);
+                }
+
+                if (historySearchQuery.trim()) {
+                  const q = historySearchQuery.toLowerCase();
+                  filtered = filtered.filter(
+                    (item) => (item.name && item.name.toLowerCase().includes(q)) || (item.memo && item.memo.toLowerCase().includes(q))
+                  );
+                }
+
+                if (filtered.length === 0) {
+                  return (
+                    <Text style={{ color: '#94a3b8', textAlign: 'center', marginVertical: 30, fontSize: 13 }}>
+                      {historyTab === 'favorites' ? 'お気に入りに登録された食事項目がありません。リストの「★」で登録できます。' : '該当する食事履歴がありません'}
+                    </Text>
+                  );
+                }
+
+                return filtered.map((item, index) => {
+                  const isFav = favorites.some(f => (f.name || '').trim().toLowerCase() === (item.name || '').trim().toLowerCase());
+
+                  return (
+                    <View
+                      key={item.id ? `${item.id}-${index}` : index}
+                      style={{
+                        backgroundColor: '#1e293b',
+                        borderRadius: 10,
+                        padding: 12,
+                        marginBottom: 8,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}
+                    >
+                      <View style={{ flex: 1, marginRight: 10 }}>
+                        <Text style={{ color: '#f8fafc', fontWeight: 'bold', fontSize: 14, marginBottom: 2 }}>
+                          {item.name} {item.frequentCount ? `(${item.frequentCount}回)` : ''}
+                        </Text>
+                        <Text style={{ color: '#94a3b8', fontSize: 12 }}>
+                          {item.calories} kcal | P:{item.protein}g F:{item.fat}g C:{item.carbs}g
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                        <TouchableOpacity
+                          onPress={() => handleToggleFavorite(item)}
+                          style={{
+                            backgroundColor: isFav ? 'rgba(245, 158, 11, 0.2)' : '#334155',
+                            borderColor: isFav ? '#f59e0b' : 'transparent',
+                            borderWidth: isFav ? 1 : 0,
+                            paddingHorizontal: 10,
+                            paddingVertical: 8,
+                            borderRadius: 8
+                          }}
+                        >
+                          <Text style={{ color: isFav ? '#f59e0b' : '#94a3b8', fontWeight: 'bold', fontSize: 12 }}>
+                            {isFav ? '★' : '☆'}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={async () => {
+                            await handleSaveMeal({
+                              name: item.name,
+                              mealType: historyTargetMealType,
+                              calories: Number(item.calories) || 0,
+                              protein: Number(item.protein) || 0,
+                              fat: Number(item.fat) || 0,
+                              carbs: Number(item.carbs) || 0,
+                              sodium: Number(item.sodium) || 0,
+                              photoUrl: item.photoUrl || '',
+                              memo: item.memo ? `(履歴追加) ${item.memo}` : '履歴追加'
+                            });
+                            Alert.alert('追加完了', `「${item.name}」を${selectedDate}に追加しました`);
+                          }}
+                          style={{
+                            backgroundColor: '#10b981',
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            borderRadius: 8
+                          }}
+                        >
+                          <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 12 }}>+ 追加</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                });
+              })()}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.saveBtn, { backgroundColor: '#475569', marginTop: 12 }]}
+              onPress={() => setIsHistoryModalOpen(false)}
+            >
+              <Text style={styles.saveBtnText}>閉じる</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* 📷 写真・カメラ記録モーダル */}
       <Modal visible={isPhotoModalOpen} animationType="slide" transparent>

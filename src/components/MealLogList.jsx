@@ -1,7 +1,7 @@
 import React from 'react';
-import { Trash2, Pencil, Sun, Moon, Coffee, Utensils, Image as ImageIcon } from 'lucide-react';
+import { Trash2, Pencil, Sun, Moon, Coffee, Utensils, Image as ImageIcon, Copy, Star } from 'lucide-react';
 
-export default function MealLogList({ mealLogs, onDeleteMeal, onEditMeal }) {
+export default function MealLogList({ mealLogs, onDeleteMeal, onEditMeal, onAddMeal, favoriteNames = [], onToggleFavorite }) {
   const getMealTypeBadge = (type) => {
     switch (type) {
       case 'breakfast':
@@ -14,6 +14,12 @@ export default function MealLogList({ mealLogs, onDeleteMeal, onEditMeal }) {
       default:
         return { label: '間食', icon: <Coffee size={14} color="#ec4899" />, color: '#ec4899' };
     }
+  };
+
+  const isFavoriteItem = (name) => {
+    if (!name || !favoriteNames) return false;
+    const n = name.trim().toLowerCase();
+    return favoriteNames.some((f) => (f || '').trim().toLowerCase() === n);
   };
 
   if (!mealLogs || mealLogs.length === 0) {
@@ -35,6 +41,7 @@ export default function MealLogList({ mealLogs, onDeleteMeal, onEditMeal }) {
 
       {mealLogs.map((log) => {
         const badge = getMealTypeBadge(log.mealType);
+        const isFav = isFavoriteItem(log.name);
 
         return (
           <div key={log.id} className="glass-panel" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
@@ -92,8 +99,44 @@ export default function MealLogList({ mealLogs, onDeleteMeal, onEditMeal }) {
               </div>
             </div>
 
-            {/* 右側: 編集 ＆ 削除ボタン */}
+            {/* 右側: お気に入り & 再追加 & 編集 ＆ 削除ボタン */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {onToggleFavorite && (
+                <button
+                  onClick={() => onToggleFavorite(log)}
+                  className="btn-secondary"
+                  style={{
+                    padding: '8px',
+                    borderRadius: '10px',
+                    color: isFav ? '#f59e0b' : 'var(--text-muted)',
+                    background: isFav ? 'rgba(245, 158, 11, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                    border: isFav ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid transparent'
+                  }}
+                  title={isFav ? 'お気に入りから削除' : 'お気に入りに追加'}
+                >
+                  <Star size={16} fill={isFav ? '#f59e0b' : 'none'} />
+                </button>
+              )}
+              {onAddMeal && (
+                <button
+                  onClick={() => onAddMeal({
+                    name: log.name,
+                    mealType: log.mealType,
+                    calories: log.calories,
+                    protein: log.protein,
+                    fat: log.fat,
+                    carbs: log.carbs,
+                    sodium: log.sodium,
+                    photoUrl: log.photoUrl,
+                    memo: log.memo
+                  })}
+                  className="btn-secondary"
+                  style={{ padding: '8px', borderRadius: '10px', color: '#10b981' }}
+                  title="同じものを追加"
+                >
+                  <Copy size={16} />
+                </button>
+              )}
               <button
                 onClick={() => onEditMeal && onEditMeal(log)}
                 className="btn-secondary"

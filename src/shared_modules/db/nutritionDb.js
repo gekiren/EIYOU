@@ -19,6 +19,12 @@ class HybridNutritionDb {
           foods: '++id, name, createdAt',
           userGoals: '++id, date'
         });
+        this.dexieDb.version(2).stores({
+          mealLogs: '++id, date, mealType, createdAt',
+          foods: '++id, name, createdAt',
+          userGoals: '++id, date',
+          favorites: '++id, name, createdAt'
+        });
       } catch (e) {
         console.warn('[HybridNutritionDb] Dexie init failed, falling back to safeStorage', e);
         this.isWeb = false;
@@ -37,6 +43,91 @@ class HybridNutritionDb {
 
   async _saveNativeLogs(logs) {
     await safeStorage.setItem('eiyou_meal_logs_v1', JSON.stringify(logs));
+  }
+
+  async _getNativeFavorites() {
+    const raw = await safeStorage.getItem('eiyou_favorites_v1', '[]');
+    try {
+      return JSON.parse(raw) || [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  async _saveNativeFavorites(favs) {
+    await safeStorage.setItem('eiyou_favorites_v1', JSON.stringify(favs));
+  }
+
+  /**
+   * お気に入りリストの取得
+   */
+  async getFavorites() {
+    if (this.isWeb && this.dexieDb) {
+      try {
+        return await this.dexieDb.favorites.orderBy('createdAt').reverse().toArray();
+      } catch (e) {
+        console.warn('Dexie getFavorites error:', e);
+      }
+    }
+    return await this._getNativeFavorites();
+  }
+
+  /**
+   * お気に入りの追加・解除トグル
+   */
+  async toggleFavorite(mealData) {
+    const nameToMatch = (mealData.name || '').trim().toLowerCase();
+    if (!nameToMatch) return false;
+
+    if (this.isWeb && this.dexieDb) {
+      try {
+        const existing = await this.dexieDb.favorites.where('name').equals(mealData.name).first();
+        if (existing) {
+          await this.dexieDb.favorites.delete(existing.id);
+          return false; // 解除された
+        } else {
+          await this.dexieDb.favorites.add({
+            name: mealData.name,
+            mealType: mealData.mealType || 'lunch',
+            calories: Number(mealData.calories) || 0,
+            protein: Number(mealData.protein) || 0,
+            fat: Number(mealData.fat) || 0,
+            carbs: Number(mealData.carbs) || 0,
+            sodium: Number(mealData.sodium) || 0,
+            photoUrl: mealData.photoUrl || '',
+            memo: mealData.memo || '',
+            createdAt: new Date().toISOString()
+          });
+          return true; // 登録された
+        }
+      } catch (e) {
+        console.warn('Dexie toggleFavorite error:', e);
+      }
+    }
+
+    const favs = await this._getNativeFavorites();
+    const index = favs.findIndex((f) => (f.name || '').trim().toLowerCase() === nameToMatch);
+    if (index !== -1) {
+      favs.splice(index, 1);
+      await this._saveNativeFavorites(favs);
+      return false; // 解除された
+    } else {
+      favs.push({
+        id: Date.now(),
+        name: mealData.name,
+        mealType: mealData.mealType || 'lunch',
+        calories: Number(mealData.calories) || 0,
+        protein: Number(mealData.protein) || 0,
+        fat: Number(mealData.fat) || 0,
+        carbs: Number(mealData.carbs) || 0,
+        sodium: Number(mealData.sodium) || 0,
+        photoUrl: mealData.photoUrl || '',
+        memo: mealData.memo || '',
+        createdAt: new Date().toISOString()
+      });
+      await this._saveNativeFavorites(favs);
+      return true; // 登録された
+    }
   }
 
   /**

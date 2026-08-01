@@ -1,9 +1,7 @@
 /**
- * Expo React Native エントリーポイント
- * Expo のデフォルトエントリ (AppEntry.js) が "./App" を参照するため、
- * src/App.jsx をラップして re-export します。
+ * Expo React Native エントリーポイント (React Native / Expo 一本化)
  */
 import { registerRootComponent } from 'expo';
-import App from './src/App';
+import App from './src/App.native.jsx';
 
 registerRootComponent(App);

@@ -7,6 +7,7 @@ import PhotoRecordModal from './components/PhotoRecordModal.jsx';
 import ChatRecordModal from './components/ChatRecordModal.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import EditMealModal from './components/EditMealModal.jsx';
+import HistorySelectModal from './components/HistorySelectModal.jsx';
 import { nutritionDb } from './shared_modules/db/nutritionDb.js';
 import { safeStorage } from './shared_modules/storage/safeStorage.js';
 import { obsidianSyncService } from './shared_modules/obsidian/obsidianSyncService.js';
@@ -14,10 +15,12 @@ import { obsidianSyncService } from './shared_modules/obsidian/obsidianSyncServi
 export default function App() {
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [mealLogs, setMealLogs] = useState([]);
+  const [favorites, setFavorites] = useState([]);
 
   // モーダル開閉ステート
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [editingMeal, setEditingMeal] = useState(null);
 
@@ -37,16 +40,19 @@ export default function App() {
     return { calories: 2200, protein: 75, fat: 60, carbs: 280, sodium: 7.0 };
   });
 
-  // アプリ起動時の Obsidian 自動一括同期チェック
-  useEffect(() => {
-    obsidianSyncService.getConfig().then(cfg => {
-      if (cfg.enabled && cfg.autoSyncOnLaunch !== false) {
-        obsidianSyncService.syncAllMealLogs(userGoals).catch(err => {
-          console.warn('[ObsidianSync] Launch auto sync failed:', err);
-        });
-      }
-    });
-  }, []);
+  const loadFavorites = async () => {
+    try {
+      const favs = await nutritionDb.getFavorites();
+      setFavorites(favs || []);
+    } catch (e) {
+      console.error('Error loading favorites:', e);
+    }
+  };
+
+  const handleToggleFavorite = async (mealData) => {
+    await nutritionDb.toggleFavorite(mealData);
+    await loadFavorites();
+  };
 
   // 日付変更時のデータロード
   const loadMealLogs = async () => {
@@ -58,8 +64,17 @@ export default function App() {
     }
   };
 
+  // アプリ起動時の Obsidian 自動一括同期チェック ＆ ロード
   useEffect(() => {
     loadMealLogs();
+    loadFavorites();
+    obsidianSyncService.getConfig().then(cfg => {
+      if (cfg.enabled && cfg.autoSyncOnLaunch !== false) {
+        obsidianSyncService.syncAllMealLogs(userGoals).catch(err => {
+          console.warn('[ObsidianSync] Launch auto sync failed:', err);
+        });
+      }
+    });
   }, [selectedDate]);
 
   // 食事追加保存処理
@@ -130,7 +145,7 @@ export default function App() {
           selectedDate={selectedDate}
         />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button
             onClick={() => setIsPhotoModalOpen(true)}
             className="flex items-center justify-center gap-3 p-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl font-bold shadow-lg shadow-blue-500/20 transition-all transform hover:-translate-y-0.5 active:translate-y-0"
@@ -146,12 +161,23 @@ export default function App() {
             <span className="text-2xl">💬</span>
             <span>チャットで栄養記録</span>
           </button>
+
+          <button
+            onClick={() => setIsHistoryModalOpen(true)}
+            className="flex items-center justify-center gap-3 p-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-xl font-bold shadow-lg shadow-emerald-500/20 transition-all transform hover:-translate-y-0.5 active:translate-y-0"
+          >
+            <span className="text-2xl">📜</span>
+            <span>履歴・お気に入りから追加</span>
+          </button>
         </div>
 
         <MealLogList
           mealLogs={mealLogs}
           onDeleteMeal={handleDeleteMeal}
           onEditMeal={(log) => setEditingMeal(log)}
+          onAddMeal={handleSaveMeal}
+          favoriteNames={favorites.map((f) => f.name)}
+          onToggleFavorite={handleToggleFavorite}
         />
       </main>
 
@@ -170,6 +196,15 @@ export default function App() {
           apiKeys={apiKeys}
           onClose={() => setIsChatModalOpen(false)}
           onSave={handleSaveMeal}
+        />
+      )}
+
+      {isHistoryModalOpen && (
+        <HistorySelectModal
+          selectedDate={selectedDate}
+          onClose={() => setIsHistoryModalOpen(false)}
+          onSave={handleSaveMeal}
+          onFavoriteToggled={loadFavorites}
         />
       )}
 
