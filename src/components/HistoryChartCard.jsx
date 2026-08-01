@@ -1,11 +1,19 @@
 import React, { useState, useMemo } from 'react';
 
 const NUTRIENT_CONFIG = {
-  calories: { label: 'カロリー', unit: 'kcal', color: '#10b981', overflowColor: '#ef4444' },
-  protein: { label: 'タンパク質', unit: 'g', color: '#06b6d4', overflowColor: '#3b82f6' },
-  fat: { label: '脂質', unit: 'g', color: '#f59e0b', overflowColor: '#ea580c' },
-  carbs: { label: '炭水化物', unit: 'g', color: '#a855f7', overflowColor: '#6b21a8' },
-  sodium: { label: '塩分', unit: 'g', color: '#f43f5e', overflowColor: '#be123c' },
+  calories: { label: 'カロリー', unit: 'kcal', color: '#10b981', overflowColor: '#ef4444', underflowColor: '#3b82f6' },
+  protein: { label: 'タンパク質', unit: 'g', color: '#06b6d4', overflowColor: '#3b82f6', underflowColor: '#64748b' },
+  fat: { label: '脂質', unit: 'g', color: '#f59e0b', overflowColor: '#ea580c', underflowColor: '#64748b' },
+  carbs: { label: '炭水化物', unit: 'g', color: '#a855f7', overflowColor: '#6b21a8', underflowColor: '#64748b' },
+  sodium: { label: '塩分', unit: 'g', color: '#f43f5e', overflowColor: '#be123c', underflowColor: '#10b981' },
+};
+
+const DEFAULT_TOLERANCES = {
+  calories: { min: -10, max: 5 },
+  protein: { min: -15, max: 20 },
+  fat: { min: -15, max: 15 },
+  carbs: { min: -15, max: 15 },
+  sodium: { min: -100, max: 0 },
 };
 
 const PERIOD_OPTIONS = [
@@ -21,6 +29,13 @@ export default function HistoryChartCard({ allLogs = [], userGoals = {} }) {
 
   const nutrientInfo = NUTRIENT_CONFIG[selectedNutrient] || NUTRIENT_CONFIG.calories;
   const targetVal = Number(userGoals[selectedNutrient]) || (selectedNutrient === 'calories' ? 2200 : 75);
+
+  const userTolerance = userGoals.tolerances?.[selectedNutrient] || DEFAULT_TOLERANCES[selectedNutrient] || { min: -10, max: 10 };
+  const minPercent = Number(userTolerance.min) ?? -10;
+  const maxPercent = Number(userTolerance.max) ?? 10;
+
+  const minTargetVal = Math.max(0, Math.round(targetVal * (1 + minPercent / 100) * 10) / 10);
+  const maxTargetVal = Math.round(targetVal * (1 + maxPercent / 100) * 10) / 10;
 
   const chartData = useMemo(() => {
     const today = new Date();
@@ -51,23 +66,25 @@ export default function HistoryChartCard({ allLogs = [], userGoals = {} }) {
     const avg = total / chartData.length;
     let achievedDays = 0;
     chartData.forEach(d => {
-      if (d.value > 0) {
-        if (selectedNutrient === 'sodium' || selectedNutrient === 'calories') {
-          if (d.value <= targetVal) achievedDays++;
-        } else {
-          if (d.value >= targetVal * 0.85) achievedDays++;
-        }
+      if (d.value > 0 && d.value >= minTargetVal && d.value <= maxTargetVal) {
+        achievedDays++;
       }
     });
     return {
       avg: Math.round(avg * 10) / 10,
       achievedDays
     };
-  }, [chartData, targetVal, selectedNutrient]);
+  }, [chartData, minTargetVal, maxTargetVal]);
 
   const maxDataVal = Math.max(...chartData.map(d => d.value), 0);
-  const maxScale = Math.max(maxDataVal, targetVal) * 1.15 || 100;
+  const maxScale = Math.max(maxDataVal, maxTargetVal, targetVal) * 1.15 || 100;
+
   const targetLinePercent = Math.min(100, Math.max(0, (targetVal / maxScale) * 100));
+  const minTargetPercent = Math.min(100, Math.max(0, (minTargetVal / maxScale) * 100));
+  const maxTargetPercent = Math.min(100, Math.max(0, (maxTargetVal / maxScale) * 100));
+  const zoneHeightPercent = Math.max(0, maxTargetPercent - minTargetPercent);
+
+  const toleranceText = `${minPercent >= 0 ? '+' : ''}${minPercent}% 〜 ${maxPercent >= 0 ? '+' : ''}${maxPercent}%`;
 
   return (
     <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px' }}>
@@ -78,7 +95,7 @@ export default function HistoryChartCard({ allLogs = [], userGoals = {} }) {
             栄養摂取推移グラフ
           </h2>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            目標: {targetVal} {nutrientInfo.unit}
+            目標: {targetVal} {nutrientInfo.unit} ({toleranceText})
           </span>
         </div>
         <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '3px', borderRadius: '8px' }}>
@@ -139,9 +156,9 @@ export default function HistoryChartCard({ allLogs = [], userGoals = {} }) {
         </div>
         <div style={{ width: '1px', background: '#334155' }} />
         <div style={{ flex: 1, textAlign: 'center' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>目標達成度</div>
-          <div style={{ fontSize: '1rem', fontWeight: 700 }}>
-            {stats.achievedDays} / {selectedPeriod} <span style={{ fontSize: '0.75rem', color: '#64748b' }}>日適正</span>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>目標達成度 ({stats.achievedDays}/{selectedPeriod}日)</div>
+          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#10b981' }}>
+            適正: {minTargetVal} 〜 {maxTargetVal} {nutrientInfo.unit}
           </div>
         </div>
       </div>
@@ -149,16 +166,45 @@ export default function HistoryChartCard({ allLogs = [], userGoals = {} }) {
       {/* ツールチップ */}
       {activeBarIndex !== null && chartData[activeBarIndex] && (
         <div style={{ background: '#334155', padding: '8px', borderRadius: '8px', marginBottom: '8px', textAlign: 'center', fontSize: '0.85rem' }}>
-          {chartData[activeBarIndex].dateStr} ({chartData[activeBarIndex].dayOfWeek}):{' '}
-          <strong style={{ color: nutrientInfo.color }}>
-            {Math.round(chartData[activeBarIndex].value * 10) / 10} {nutrientInfo.unit}
-          </strong>{' '}
-          ({Math.round((chartData[activeBarIndex].value / targetVal) * 100)}%)
+          {(() => {
+            const item = chartData[activeBarIndex];
+            const isAchieved = item.value >= minTargetVal && item.value <= maxTargetVal;
+            const statusLabel = isAchieved
+              ? '🎯 達成（適正）'
+              : item.value < minTargetVal
+              ? '📉 不足'
+              : '📈 超過';
+            const statusColor = isAchieved ? '#10b981' : item.value < minTargetVal ? '#60a5fa' : '#ef4444';
+            return (
+              <span>
+                {item.dateStr} ({item.dayOfWeek}):{' '}
+                <strong style={{ color: statusColor }}>
+                  {Math.round(item.value * 10) / 10} {nutrientInfo.unit}
+                </strong>{' '}
+                ({Math.round((item.value / targetVal) * 100)}%) — <strong style={{ color: statusColor }}>{statusLabel}</strong>
+              </span>
+            );
+          })()}
         </div>
       )}
 
       {/* グラフ領域 */}
       <div style={{ height: '180px', position: 'relative', marginTop: '10px', paddingTop: '16px' }}>
+        {/* 達成適正帯 */}
+        {zoneHeightPercent > 0 && (
+          <div style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: `${minTargetPercent}%`,
+            height: `${zoneHeightPercent}%`,
+            background: 'rgba(16, 185, 129, 0.12)',
+            borderTop: '1px dashed rgba(16, 185, 129, 0.4)',
+            borderBottom: '1px dashed rgba(16, 185, 129, 0.4)',
+            zIndex: 2
+          }} />
+        )}
+
         {/* 目標線 */}
         <div style={{
           position: 'absolute',
@@ -176,11 +222,17 @@ export default function HistoryChartCard({ allLogs = [], userGoals = {} }) {
         </div>
 
         {/* バー一覧 */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', height: '100%', paddingBottom: '24px', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', height: '100%', paddingBottom: '24px', justifyContent: 'space-between', position: 'relative', zIndex: 5 }}>
           {chartData.map((item, index) => {
             const barHeightPercent = Math.min(100, (item.value / maxScale) * 100);
-            const isOverflow = item.value > targetVal && (selectedNutrient === 'calories' || selectedNutrient === 'sodium');
-            const barColor = isOverflow ? nutrientInfo.overflowColor : nutrientInfo.color;
+            const isAchieved = item.value >= minTargetVal && item.value <= maxTargetVal;
+            const isUnder = item.value < minTargetVal;
+
+            let barColor = nutrientInfo.color;
+            if (!isAchieved && item.value > 0) {
+              barColor = isUnder ? nutrientInfo.underflowColor : nutrientInfo.overflowColor;
+            }
+
             const isSelected = activeBarIndex === index;
 
             return (

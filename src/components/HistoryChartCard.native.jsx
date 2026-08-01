@@ -4,16 +4,23 @@ import {
   Text,
   View,
   TouchableOpacity,
-  ScrollView,
-  Dimensions
+  ScrollView
 } from 'react-native';
 
 const NUTRIENT_CONFIG = {
-  calories: { label: 'カロリー', unit: 'kcal', color: '#10b981', overflowColor: '#ef4444' },
-  protein: { label: 'タンパク質', unit: 'g', color: '#06b6d4', overflowColor: '#3b82f6' },
-  fat: { label: '脂質', unit: 'g', color: '#f59e0b', overflowColor: '#ea580c' },
-  carbs: { label: '炭水化物', unit: 'g', color: '#a855f7', overflowColor: '#6b21a8' },
-  sodium: { label: '塩分', unit: 'g', color: '#f43f5e', overflowColor: '#be123c' },
+  calories: { label: 'カロリー', unit: 'kcal', color: '#10b981', overflowColor: '#ef4444', underflowColor: '#3b82f6' },
+  protein: { label: 'タンパク質', unit: 'g', color: '#06b6d4', overflowColor: '#3b82f6', underflowColor: '#64748b' },
+  fat: { label: '脂質', unit: 'g', color: '#f59e0b', overflowColor: '#ea580c', underflowColor: '#64748b' },
+  carbs: { label: '炭水化物', unit: 'g', color: '#a855f7', overflowColor: '#6b21a8', underflowColor: '#64748b' },
+  sodium: { label: '塩分', unit: 'g', color: '#f43f5e', overflowColor: '#be123c', underflowColor: '#10b981' },
+};
+
+const DEFAULT_TOLERANCES = {
+  calories: { min: -10, max: 5 },   // -10% 〜 +5%
+  protein: { min: -15, max: 20 },   // -15% 〜 +20%
+  fat: { min: -15, max: 15 },       // -15% 〜 +15%
+  carbs: { min: -15, max: 15 },     // -15% 〜 +15%
+  sodium: { min: -100, max: 0 },    // 〜 +0% (目標以下)
 };
 
 const PERIOD_OPTIONS = [
@@ -30,12 +37,20 @@ export default function HistoryChartCard({ allLogs = [], userGoals = {} }) {
   const nutrientInfo = NUTRIENT_CONFIG[selectedNutrient] || NUTRIENT_CONFIG.calories;
   const targetVal = Number(userGoals[selectedNutrient]) || (selectedNutrient === 'calories' ? 2200 : 75);
 
+  // ユーザー設定の許容範囲 (-% 〜 +%)
+  const userTolerance = userGoals.tolerances?.[selectedNutrient] || DEFAULT_TOLERANCES[selectedNutrient] || { min: -10, max: 10 };
+  const minPercent = Number(userTolerance.min) ?? -10;
+  const maxPercent = Number(userTolerance.max) ?? 10;
+
+  // 目標の適正（達成）数値範囲の計算
+  const minTargetVal = Math.max(0, Math.round(targetVal * (1 + minPercent / 100) * 10) / 10);
+  const maxTargetVal = Math.round(targetVal * (1 + maxPercent / 100) * 10) / 10;
+
   // 直近N日間のデータ集計
   const chartData = useMemo(() => {
     const today = new Date();
     const dates = [];
     
-    // N日前から今日までの日付文字列を作成
     for (let i = selectedPeriod - 1; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
@@ -45,7 +60,6 @@ export default function HistoryChartCard({ allLogs = [], userGoals = {} }) {
       dates.push({ dateStr, label: monthDay, dayOfWeek, value: 0 });
     }
 
-    // ログを日付ごとに集計
     const dateMap = new Map(dates.map(item => [item.dateStr, item]));
     allLogs.forEach(log => {
       if (log.date && dateMap.has(log.date)) {
@@ -62,29 +76,32 @@ export default function HistoryChartCard({ allLogs = [], userGoals = {} }) {
     if (chartData.length === 0) return { avg: 0, achievedDays: 0 };
     const total = chartData.reduce((acc, cur) => acc + cur.value, 0);
     const avg = total / chartData.length;
-    // カロリー・塩分の場合は目標以下を達成、タンパク質・炭水化物・脂質は目標に近い/到達を達成と判定
+
     let achievedDays = 0;
     chartData.forEach(d => {
-      if (d.value > 0) {
-        if (selectedNutrient === 'sodium' || selectedNutrient === 'calories') {
-          if (d.value <= targetVal) achievedDays++;
-        } else {
-          if (d.value >= targetVal * 0.85) achievedDays++; // 85%以上到達
-        }
+      if (d.value > 0 && d.value >= minTargetVal && d.value <= maxTargetVal) {
+        achievedDays++;
       }
     });
+
     return {
       avg: Math.round(avg * 10) / 10,
       achievedDays
     };
-  }, [chartData, targetVal, selectedNutrient]);
+  }, [chartData, minTargetVal, maxTargetVal]);
 
   // Y軸の最大スケール値計算
   const maxDataVal = Math.max(...chartData.map(d => d.value), 0);
-  const maxScale = Math.max(maxDataVal, targetVal) * 1.15 || 100; // 目標線や最大の棒が余裕をもって収まる高さ
+  const maxScale = Math.max(maxDataVal, maxTargetVal, targetVal) * 1.15 || 100;
 
-  // 目標線の高さ割合 (%)
+  // 目標線・達成帯の高さ割合 (%)
   const targetLinePercent = Math.min(100, Math.max(0, (targetVal / maxScale) * 100));
+  const minTargetPercent = Math.min(100, Math.max(0, (minTargetVal / maxScale) * 100));
+  const maxTargetPercent = Math.min(100, Math.max(0, (maxTargetVal / maxScale) * 100));
+  const zoneHeightPercent = Math.max(0, maxTargetPercent - minTargetPercent);
+
+  // 目標からの許容範囲テキスト
+  const toleranceText = `${minPercent >= 0 ? '+' : ''}${minPercent}% 〜 ${maxPercent >= 0 ? '+' : ''}${maxPercent}%`;
 
   return (
     <View style={styles.cardContainer}>
@@ -93,7 +110,7 @@ export default function HistoryChartCard({ allLogs = [], userGoals = {} }) {
         <View>
           <Text style={styles.cardTitle}>栄養摂取推移</Text>
           <Text style={styles.cardSubtitle}>
-            目標: {targetVal} {nutrientInfo.unit}
+            目標: {targetVal} {nutrientInfo.unit} ({toleranceText})
           </Text>
         </View>
 
@@ -167,9 +184,9 @@ export default function HistoryChartCard({ allLogs = [], userGoals = {} }) {
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statBox}>
-          <Text style={styles.statLabel}>目標達成度</Text>
-          <Text style={styles.statValue}>
-            {stats.achievedDays} / {selectedPeriod} <Text style={styles.statUnit}>日適正</Text>
+          <Text style={styles.statLabel}>目標達成度 ({stats.achievedDays}/{selectedPeriod}日)</Text>
+          <Text style={styles.statRange}>
+            適正: {minTargetVal} 〜 {maxTargetVal} {nutrientInfo.unit}
           </Text>
         </View>
       </View>
@@ -177,23 +194,49 @@ export default function HistoryChartCard({ allLogs = [], userGoals = {} }) {
       {/* 選択バーのツールチップ表示 */}
       {activeBarIndex !== null && chartData[activeBarIndex] && (
         <View style={styles.tooltipContainer}>
-          <Text style={styles.tooltipText}>
-            {chartData[activeBarIndex].dateStr} ({chartData[activeBarIndex].dayOfWeek}):{' '}
-            <Text style={{ fontWeight: 'bold', color: nutrientInfo.color }}>
-              {Math.round(chartData[activeBarIndex].value * 10) / 10} {nutrientInfo.unit}
-            </Text>
-            {' '}
-            ({Math.round((chartData[activeBarIndex].value / targetVal) * 100)}%)
-          </Text>
+          {(() => {
+            const item = chartData[activeBarIndex];
+            const isAchieved = item.value >= minTargetVal && item.value <= maxTargetVal;
+            const statusLabel = isAchieved
+              ? '🎯 達成（適正）'
+              : item.value < minTargetVal
+              ? '📉 不足'
+              : '📈 超過';
+            const statusColor = isAchieved ? '#10b981' : item.value < minTargetVal ? '#60a5fa' : '#ef4444';
+
+            return (
+              <Text style={styles.tooltipText}>
+                {item.dateStr} ({item.dayOfWeek}):{' '}
+                <Text style={{ fontWeight: 'bold', color: statusColor }}>
+                  {Math.round(item.value * 10) / 10} {nutrientInfo.unit}
+                </Text>
+                {' '}
+                ({Math.round((item.value / targetVal) * 100)}%) — <Text style={{ color: statusColor, fontWeight: '700' }}>{statusLabel}</Text>
+              </Text>
+            );
+          })()}
         </View>
       )}
 
       {/* 棒グラフ領域 */}
       <View style={styles.chartAreaContainer}>
-        {/* 目標破線ライン */}
+        {/* 達成適正帯 (グリーンゾーン) */}
+        {zoneHeightPercent > 0 && (
+          <View
+            style={[
+              styles.targetZone,
+              {
+                bottom: `${minTargetPercent}%`,
+                height: `${zoneHeightPercent}%`,
+              }
+            ]}
+          />
+        )}
+
+        {/* 目標ライン (中央基準線) */}
         <View style={[styles.targetLine, { bottom: `${targetLinePercent}%` }]}>
           <View style={styles.targetDashedLine} />
-          <Text style={styles.targetLineLabel}>{targetVal}</Text>
+          <Text style={styles.targetLineLabel}>目標 {targetVal}</Text>
         </View>
 
         {/* バー一覧 */}
@@ -204,8 +247,14 @@ export default function HistoryChartCard({ allLogs = [], userGoals = {} }) {
         >
           {chartData.map((item, index) => {
             const barHeightPercent = Math.min(100, (item.value / maxScale) * 100);
-            const isOverflow = item.value > targetVal && (selectedNutrient === 'calories' || selectedNutrient === 'sodium');
-            const barColor = isOverflow ? nutrientInfo.overflowColor : nutrientInfo.color;
+            const isAchieved = item.value >= minTargetVal && item.value <= maxTargetVal;
+            const isUnder = item.value < minTargetVal;
+
+            let barColor = nutrientInfo.color;
+            if (!isAchieved && item.value > 0) {
+              barColor = isUnder ? nutrientInfo.underflowColor : nutrientInfo.overflowColor;
+            }
+
             const isSelected = activeBarIndex === index;
 
             return (
@@ -281,7 +330,7 @@ const styles = StyleSheet.create({
     color: '#f8fafc',
   },
   cardSubtitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#94a3b8',
     marginTop: 2,
   },
@@ -344,7 +393,7 @@ const styles = StyleSheet.create({
   },
   statDivider: {
     width: 1,
-    height: 24,
+    height: 28,
     backgroundColor: '#334155',
   },
   statLabel: {
@@ -356,6 +405,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#f8fafc',
+  },
+  statRange: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#10b981',
   },
   statUnit: {
     fontSize: 11,
@@ -378,6 +432,17 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginTop: 8,
     paddingTop: 16,
+  },
+  targetZone: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    borderStyle: 'dashed',
+    zIndex: 2,
   },
   targetLine: {
     position: 'absolute',
@@ -406,9 +471,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     height: '100%',
-    paddingBottom: 24, // X軸ラベルスペース
+    paddingBottom: 24,
     justifyContent: 'space-between',
     minWidth: '100%',
+    zIndex: 5,
   },
   barColumn: {
     flex: 1,

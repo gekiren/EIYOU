@@ -84,14 +84,48 @@ export default function NativeApp() {
   const [sodiumInput, setSodiumInput] = useState('');
   const [mealType, setMealType] = useState('lunch');
 
+  // 目標達成許容範囲のデフォルト値
+  const DEFAULT_TOLERANCES = {
+    calories: { min: -10, max: 5 },
+    protein: { min: -15, max: 20 },
+    fat: { min: -15, max: 15 },
+    carbs: { min: -15, max: 15 },
+    sodium: { min: -100, max: 0 },
+  };
+
   // 目標設定
-  const [userGoals, setUserGoals] = useState({ calories: 2200, protein: 75, fat: 60, carbs: 280, sodium: 7.0 });
+  const [userGoals, setUserGoals] = useState({
+    calories: 2200,
+    protein: 75,
+    fat: 60,
+    carbs: 280,
+    sodium: 7.0,
+    tolerances: DEFAULT_TOLERANCES
+  });
 
   // 目標設定モード & PFC比率ステート (Native)
   const [goalMode, setGoalMode] = useState('calorie_pfc'); // 'calorie_pfc' | 'pfc_gram' | 'protein_pfc'
   const [pRatio, setPRatio] = useState(30);
   const [fRatio, setFRatio] = useState(20);
   const [cRatio, setCRatio] = useState(50);
+
+  // 許容範囲 (-% 〜 +%) 変更用ハンドラー
+  const handleToleranceChange = (nutrientKey, minOrMax, value) => {
+    const num = Number(value);
+    const updated = {
+      ...userGoals,
+      tolerances: {
+        ...DEFAULT_TOLERANCES,
+        ...(userGoals.tolerances || {}),
+        [nutrientKey]: {
+          ...(userGoals.tolerances?.[nutrientKey] || DEFAULT_TOLERANCES[nutrientKey]),
+          [minOrMax]: isNaN(num) ? 0 : num
+        }
+      }
+    };
+    setUserGoals(updated);
+    safeStorage.setItem('eiyou_user_goals', JSON.stringify(updated));
+  };
 
   // Obsidian 連携ステート
   const [obsidianEnabled, setObsidianEnabled] = useState(false);
@@ -136,8 +170,20 @@ export default function NativeApp() {
     if (savedGoals) {
       try {
         const parsed = JSON.parse(savedGoals);
-        setUserGoals(parsed);
-        updateRatiosFromGoals(parsed);
+        const mergedGoals = {
+          calories: 2200,
+          protein: 75,
+          fat: 60,
+          carbs: 280,
+          sodium: 7.0,
+          ...parsed,
+          tolerances: {
+            ...DEFAULT_TOLERANCES,
+            ...(parsed.tolerances || {})
+          }
+        };
+        setUserGoals(mergedGoals);
+        updateRatiosFromGoals(mergedGoals);
       } catch (e) {}
     } else {
       updateRatiosFromGoals(userGoals);
@@ -1563,6 +1609,49 @@ export default function NativeApp() {
                         ⚠️ PFC比率の合計が 100% になっていません (現在: {Number(pRatio) + Number(fRatio) + Number(cRatio)}%)
                       </Text>
                     )}
+                  </View>
+
+                  {/* 🎯 達成許容範囲設定 (-% 〜 +%) */}
+                  <View style={{ marginTop: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#334155' }}>
+                    <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#38bdf8', marginBottom: 4 }}>
+                      🎯 栄養素別 目標達成許容範囲 (-% 〜 +%)
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10 }}>
+                      推移グラフで「達成（適正）」と判定されるマイナス％・プラス％の許容幅を設定します。
+                    </Text>
+
+                    {[
+                      { key: 'calories', label: 'カロリー' },
+                      { key: 'protein', label: 'タンパク質' },
+                      { key: 'fat', label: '脂質' },
+                      { key: 'carbs', label: '炭水化物' },
+                      { key: 'sodium', label: '塩分' },
+                    ].map(item => {
+                      const tol = userGoals.tolerances?.[item.key] || DEFAULT_TOLERANCES[item.key] || { min: -10, max: 10 };
+                      return (
+                        <View key={item.key} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                          <Text style={{ fontSize: 12, color: '#f8fafc', width: 75 }}>{item.label}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Text style={{ fontSize: 11, color: '#64748b' }}>下限:</Text>
+                            <TextInput
+                              style={[styles.input, { width: 55, paddingVertical: 4, paddingHorizontal: 6, marginBottom: 0, textAlign: 'center', fontSize: 12 }]}
+                              keyboardType="numeric"
+                              value={String(tol.min)}
+                              onChangeText={(val) => handleToleranceChange(item.key, 'min', val)}
+                            />
+                            <Text style={{ fontSize: 11, color: '#94a3b8' }}>% 〜</Text>
+                            <Text style={{ fontSize: 11, color: '#64748b', marginLeft: 4 }}>上限:</Text>
+                            <TextInput
+                              style={[styles.input, { width: 55, paddingVertical: 4, paddingHorizontal: 6, marginBottom: 0, textAlign: 'center', fontSize: 12 }]}
+                              keyboardType="numeric"
+                              value={String(tol.max)}
+                              onChangeText={(val) => handleToleranceChange(item.key, 'max', val)}
+                            />
+                            <Text style={{ fontSize: 11, color: '#94a3b8' }}>%</Text>
+                          </View>
+                        </View>
+                      );
+                    })}
                   </View>
                 </View>
               )}
