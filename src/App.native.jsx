@@ -34,6 +34,18 @@ export default function NativeApp() {
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
+  // 編集モーダル用ステート
+  const [editingMealLog, setEditingMealLog] = useState(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editMealName, setEditMealName] = useState('');
+  const [editMealType, setEditMealType] = useState('lunch');
+  const [editCalories, setEditCalories] = useState('');
+  const [editProtein, setEditProtein] = useState('');
+  const [editFat, setEditFat] = useState('');
+  const [editCarbs, setEditCarbs] = useState('');
+  const [editSodium, setEditSodium] = useState('');
+  const [editMemo, setEditMemo] = useState('');
+
   // 記録モード ('ocr' | 'dish' | 'manual')
   const [recordMode, setRecordMode] = useState('ocr');
 
@@ -309,6 +321,42 @@ export default function NativeApp() {
     ]);
   };
 
+  const handleOpenEditModal = (log) => {
+    setEditingMealLog(log);
+    setEditMealName(log.name || '');
+    setEditMealType(log.mealType || 'lunch');
+    setEditCalories(String(log.calories ?? 0));
+    setEditProtein(String(log.protein ?? 0));
+    setEditFat(String(log.fat ?? 0));
+    setEditCarbs(String(log.carbs ?? 0));
+    setEditSodium(String(log.sodium ?? 0));
+    setEditMemo(log.memo || '');
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEditMeal = async () => {
+    if (!editingMealLog) return;
+    if (!editMealName.trim()) {
+      Alert.alert('入力エラー', '食品・料理名を入力してください。');
+      return;
+    }
+
+    await nutritionDb.updateMealLog(editingMealLog.id, {
+      name: editMealName,
+      mealType: editMealType,
+      calories: Number(editCalories) || 0,
+      protein: Number(editProtein) || 0,
+      fat: Number(editFat) || 0,
+      carbs: Number(editCarbs) || 0,
+      sodium: Number(editSodium) || 0,
+      memo: editMemo
+    });
+
+    setIsEditModalOpen(false);
+    setEditingMealLog(null);
+    await loadMealLogs();
+  };
+
   const handleSaveSettings = async () => {
     await safeStorage.setItem('eiyou_user_goals', JSON.stringify(userGoals));
     setIsSettingsModalOpen(false);
@@ -318,11 +366,16 @@ export default function NativeApp() {
   // OTA手動アップデートチェック処理
   const handleCheckOTAUpdate = async () => {
     try {
+      if (!Updates.isEnabled) {
+        Alert.alert('OTA無効 (Debugモード)', '現在のビルドはDebugモードのためOTAが無効化されています。Releaseビルド(assembleRelease)でのみOTA機能が動作します。');
+        return;
+      }
       const update = await Updates.checkForUpdateAsync();
+      const currentId = Updates.updateId ? Updates.updateId.substring(0, 8) + '...' : '初期組み込み版(Embedded)';
       if (update.isAvailable) {
         Alert.alert(
           '新バージョン検出',
-          '新しいOTAアップデートが見つかりました。今すぐ適用してアプリを再起動しますか？',
+          `新しいOTAアップデートが見つかりました。(現在: ${currentId})\n今すぐ適用してアプリを再起動しますか？`,
           [
             { text: '後で', style: 'cancel' },
             {
@@ -339,11 +392,12 @@ export default function NativeApp() {
           ]
         );
       } else {
-        Alert.alert('最新状態', 'アプリはすでに最新のOTAバージョンです。');
+        Alert.alert('最新状態', `アプリはすでに最新のOTAバージョンを適用済みです。\n(適用中ID: ${currentId})`);
       }
     } catch (error) {
       console.warn('OTA Check Error:', error);
-      Alert.alert('OTA確認', '現在利用可能なOTA更新はありません。 (ビルドまたはネットワーク状況をご確認ください)');
+      const currentId = Updates.updateId ? Updates.updateId.substring(0, 8) + '...' : '初期組み込み版';
+      Alert.alert('OTA確認', `最新の更新が適用されているか、開発モードです。\n(適用中ID: ${currentId})\n${error?.message || ''}`);
     }
   };
 
@@ -517,12 +571,20 @@ export default function NativeApp() {
                   </Text>
                   {log.memo ? <Text style={styles.mealMemo}>{log.memo}</Text> : null}
                 </View>
-                <TouchableOpacity
-                  onPress={() => handleDeleteMeal(log.id)}
-                  style={styles.deleteButton}
-                >
-                  <Text style={styles.deleteButtonText}>削除</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                  <TouchableOpacity
+                    onPress={() => handleOpenEditModal(log)}
+                    style={styles.editButton}
+                  >
+                    <Text style={styles.editButtonText}>編集</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleDeleteMeal(log.id)}
+                    style={styles.deleteButton}
+                  >
+                    <Text style={styles.deleteButtonText}>削除</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ))
           )}
@@ -825,6 +887,121 @@ export default function NativeApp() {
           </View>
         </View>
       </Modal>
+
+      {/* ✏️ 食事記録 編集モーダル */}
+      <Modal visible={isEditModalOpen} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>✏️ 食事ログの編集</Text>
+
+              {/* 食事区分選択 */}
+              <Text style={styles.inputLabel}>食事区分</Text>
+              <View style={styles.modeTabContainer}>
+                {[
+                  { key: 'breakfast', label: '朝食' },
+                  { key: 'lunch', label: '昼食' },
+                  { key: 'dinner', label: '夕食' },
+                  { key: 'snack', label: '間食' }
+                ].map((item) => (
+                  <TouchableOpacity
+                    key={item.key}
+                    style={[styles.modeTab, editMealType === item.key && styles.activeModeTab]}
+                    onPress={() => setEditMealType(item.key)}
+                  >
+                    <Text style={[styles.modeTabText, editMealType === item.key && styles.activeModeTabText]}>
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.inputLabel}>食品・料理名</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="例: 鮭おにぎり"
+                placeholderTextColor="#94a3b8"
+                value={editMealName}
+                onChangeText={setEditMealName}
+              />
+
+              <View style={styles.rowInputs}>
+                <View style={{ flex: 1, marginRight: 5 }}>
+                  <Text style={styles.inputLabel}>カロリー (kcal)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={editCalories}
+                    onChangeText={setEditCalories}
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: 5 }}>
+                  <Text style={styles.inputLabel}>タンパク質 (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={editProtein}
+                    onChangeText={setEditProtein}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.rowInputs}>
+                <View style={{ flex: 1, marginRight: 5 }}>
+                  <Text style={styles.inputLabel}>脂質 (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={editFat}
+                    onChangeText={setEditFat}
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: 5 }}>
+                  <Text style={styles.inputLabel}>炭水化物 (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={editCarbs}
+                    onChangeText={setEditCarbs}
+                  />
+                </View>
+              </View>
+
+              <Text style={styles.inputLabel}>食塩相当量 (g)</Text>
+              <TextInput
+                style={styles.input}
+                keyboardType="numeric"
+                value={editSodium}
+                onChangeText={setEditSodium}
+              />
+
+              <Text style={styles.inputLabel}>メモ</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="メモ"
+                placeholderTextColor="#94a3b8"
+                value={editMemo}
+                onChangeText={setEditMemo}
+              />
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalBtn, { backgroundColor: '#64748b' }]}
+                  onPress={() => setIsEditModalOpen(false)}
+                >
+                  <Text style={styles.modalBtnText}>キャンセル</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalBtn, { backgroundColor: '#3b82f6' }]}
+                  onPress={handleSaveEditMeal}
+                >
+                  <Text style={styles.modalBtnText}>変更を保存</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -972,6 +1149,16 @@ const styles = StyleSheet.create({
     color: '#38bdf8',
     fontSize: 11,
     marginTop: 2
+  },
+  editButton: {
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 4
+  },
+  editButtonText: {
+    color: '#ffffff',
+    fontSize: 12
   },
   deleteButton: {
     backgroundColor: '#ef4444',

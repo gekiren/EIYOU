@@ -17,7 +17,11 @@
       "adaptiveIcon": {
         "backgroundColor": "#0f172a"
       },
-      "package": "com.gekiren.eiyou"
+      "package": "com.gekiren.eiyou",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "extra": {
       "eas": {

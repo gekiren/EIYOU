@@ -93,6 +93,21 @@ class HybridNutritionDb {
   }
 
   /**
+   * 食事ログの更新
+   */
+  async updateMealLog(id, updateData) {
+    if (this.isWeb && this.dexieDb) {
+      return await this.dexieDb.mealLogs.update(id, updateData);
+    }
+    const logs = await this._getNativeLogs();
+    const index = logs.findIndex(item => item.id === id);
+    if (index !== -1) {
+      logs[index] = { ...logs[index], ...updateData };
+      await this._saveNativeLogs(logs);
+    }
+  }
+
+  /**
    * 全食事ログの取得
    */
   async getAllMealLogs() {

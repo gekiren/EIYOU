@@ -1,7 +1,7 @@
 import React from 'react';
-import { Trash2, Sun, Moon, Coffee, Utensils, Image as ImageIcon } from 'lucide-react';
+import { Trash2, Pencil, Sun, Moon, Coffee, Utensils, Image as ImageIcon } from 'lucide-react';
 
-export default function MealLogList({ mealLogs, onDeleteMeal }) {
+export default function MealLogList({ mealLogs, onDeleteMeal, onEditMeal }) {
   const getMealTypeBadge = (type) => {
     switch (type) {
       case 'breakfast':
@@ -92,15 +92,25 @@ export default function MealLogList({ mealLogs, onDeleteMeal }) {
               </div>
             </div>
 
-            {/* 右側: 削除ボタン */}
-            <button
-              onClick={() => onDeleteMeal(log.id)}
-              className="btn-secondary"
-              style={{ padding: '8px', borderRadius: '10px', color: '#ef4444' }}
-              title="削除"
-            >
-              <Trash2 size={16} />
-            </button>
+            {/* 右側: 編集 ＆ 削除ボタン */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                onClick={() => onEditMeal && onEditMeal(log)}
+                className="btn-secondary"
+                style={{ padding: '8px', borderRadius: '10px', color: '#3b82f6' }}
+                title="編集"
+              >
+                <Pencil size={16} />
+              </button>
+              <button
+                onClick={() => onDeleteMeal(log.id)}
+                className="btn-secondary"
+                style={{ padding: '8px', borderRadius: '10px', color: '#ef4444' }}
+                title="削除"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
 
           </div>
         );
