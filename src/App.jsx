@@ -8,6 +8,7 @@ import ChatRecordModal from './components/ChatRecordModal.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import EditMealModal from './components/EditMealModal.jsx';
 import HistorySelectModal from './components/HistorySelectModal.jsx';
+import HistoryChartCard from './components/HistoryChartCard.jsx';
 import { nutritionDb } from './shared_modules/db/nutritionDb.js';
 import { safeStorage } from './shared_modules/storage/safeStorage.js';
 import { obsidianSyncService } from './shared_modules/obsidian/obsidianSyncService.js';
@@ -15,6 +16,7 @@ import { obsidianSyncService } from './shared_modules/obsidian/obsidianSyncServi
 export default function App() {
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [mealLogs, setMealLogs] = useState([]);
+  const [allHistoryLogs, setAllHistoryLogs] = useState([]);
   const [favorites, setFavorites] = useState([]);
 
   // モーダル開閉ステート
@@ -57,8 +59,12 @@ export default function App() {
   // 日付変更時のデータロード
   const loadMealLogs = async () => {
     try {
-      const logs = await nutritionDb.getMealLogsByDate(selectedDate);
+      const [logs, allLogs] = await Promise.all([
+        nutritionDb.getMealLogsByDate(selectedDate),
+        nutritionDb.getAllMealLogs()
+      ]);
       setMealLogs(logs || []);
+      setAllHistoryLogs(allLogs || []);
     } catch (err) {
       console.error('Error loading meal logs:', err);
     }
@@ -143,6 +149,11 @@ export default function App() {
           mealLogs={mealLogs}
           userGoals={userGoals}
           selectedDate={selectedDate}
+        />
+
+        <HistoryChartCard
+          allLogs={allHistoryLogs}
+          userGoals={userGoals}
         />
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

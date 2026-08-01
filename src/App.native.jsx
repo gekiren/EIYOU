@@ -22,6 +22,8 @@ import { nutritionDb } from './shared_modules/db/nutritionDb.js';
 import { analyzeMealPhoto } from './shared_modules/ai/nutritionAiService.js';
 import { SECURE_WORKER_PROXY_URL } from './config/constants.js';
 import { obsidianSyncService } from './shared_modules/obsidian/obsidianSyncService.js';
+import HistoryChartCard from './components/HistoryChartCard.native.jsx';
+
 
 if (typeof window !== 'undefined' && FileSystem && FileSystem.StorageAccessFramework) {
   window.expoFileSystemSAF = { StorageAccessFramework: FileSystem.StorageAccessFramework };
@@ -256,8 +258,12 @@ export default function NativeApp() {
   const loadMealLogs = async () => {
     setLoading(true);
     try {
-      const logs = await nutritionDb.getMealLogsByDate(selectedDate);
+      const [logs, allLogs] = await Promise.all([
+        nutritionDb.getMealLogsByDate(selectedDate),
+        nutritionDb.getAllMealLogs()
+      ]);
       setMealLogs(logs || []);
+      setAllHistoryLogs(allLogs || []);
     } catch (e) {
       console.error('Failed to load meal logs:', e);
     } finally {
@@ -803,6 +809,9 @@ export default function NativeApp() {
             </View>
           </View>
         </View>
+
+        {/* 履歴栄養推移グラフカード */}
+        <HistoryChartCard allLogs={allHistoryLogs} userGoals={userGoals} />
 
         {/* 食事記録リスト */}
         <View style={styles.card}>
