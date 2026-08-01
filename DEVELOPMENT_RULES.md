@@ -36,7 +36,18 @@
   - ネイティブライブラリの新規追加や権限変更を伴わない UIの修正、レイアウト変更、ロジック改善、AIプロンプト調整、バグ修正等のすべての変更は、ビルド回数を抑えるため **ネイティブAPKの再ビルドを行わず、必ず OTA (EAS Update) 更新を最優先で適用すること**。
   - **Release ビルドでの検証必須**: Debug ビルド (`assembleDebug`) では Expo の仕様により `expo-updates` モジュールが無効化 (`Updates.isEnabled = false`) されるため、`checkForUpdateAsync()` でエラーが発生する。OTA 機能を動かすためには、必ず **Release ビルド (`assembleRelease`)** で APK を作成すること。
   - **チャネルヘッダーの設定保持**: EAS Update サーバーへのリクエストに `channel-name` ヘッダーが必要なため、`app.json` の `updates.url`（`?channel-name=staging`）および `AndroidManifest.xml`（`expo.modules.updates.EXPO_CHANNEL_NAME`）にチャネル設定を必ず保持させること。
-  - **ローカル APK ビルド時の事前 JS バンドル埋め込み**: ローカルで Gradle ビルドを行う際は、Metro サーバー非接続時の `Unable to load script` エラーを防止するため、事前に `npx expo export:embed --platform android --dev false --entry-file index.js --bundle-output "android/app/src/main/assets/index.android.bundle" --assets-dest "android/app/src/main/res"` を実行してオフライン JS バンドルを事前埋め込みしてからビルドを行うこと。
+
+
+## 5. 検証およびデッドロック防止規約
+コード変更・実装を行う際は、配信（OTA / APK）前に以下の**「デッドロック防止および画面表示検証プロセス」**を必ず実行・確認すること。
+
+1. **UI / レイアウトデッドロック（高さ・サイズ決定不能状態）の事前検証**:
+   - React Native / Flexbox において、`maxHeight` や動的サイズ指定のみの親 View に対して子要素 (`ScrollView` / `View`) に `flex: 1` を指定していないか確認する。親の高さが未確定のまま `flex: 1` を重ねると高さが `0`（非表示・非スクロール）に陥るため、親 View に明確な `height` または画面パディングで枠組みを確定させること。
+2. **データベース / トランザクションデッドロックの事前検証**:
+   - SQLite / AsyncStorage などの非同期処理において、トランザクション内部での追加非同期クエリ呼び出しや相互ロック（循環参照・無限 await）が存在しないか、非同期フローを確実に確認すること。
+3. **配信前確認**:
+   - コミットおよび OTA (EAS Update) 実行前に、UIコンポーネントが端末全サイズで正しく描画され、非表示化や無限ループ等のデッドロックが発生しないことを目視およびビルド確認で検証すること。
+
 
 
 

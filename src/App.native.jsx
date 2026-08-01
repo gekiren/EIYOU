@@ -1404,8 +1404,8 @@ export default function NativeApp() {
 
       {/* 設定モーダル */}
       <Modal visible={isSettingsModalOpen} animationType="slide" transparent onRequestClose={() => setIsSettingsModalOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.75)', justifyContent: 'center', alignItems: 'center', padding: 12 }}>
-          <View style={{ width: '100%', maxHeight: '85%', backgroundColor: '#1e293b', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#334155', display: 'flex', flexDirection: 'column' }}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.75)', justifyContent: 'center', paddingHorizontal: 12, paddingVertical: 45 }}>
+          <View style={{ flex: 1, backgroundColor: '#1e293b', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#334155', display: 'flex', flexDirection: 'column' }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <Text style={styles.modalTitle}>⚙️ アプリ設定</Text>
               <TouchableOpacity onPress={() => setIsSettingsModalOpen(false)}>
