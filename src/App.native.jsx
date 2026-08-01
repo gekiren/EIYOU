@@ -39,6 +39,7 @@ export default function NativeApp() {
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [selectedPreviewPhoto, setSelectedPreviewPhoto] = useState(null); // 写真フルスクリーンプレビュー用
 
   // 履歴追加用ステート
   const [allHistoryLogs, setAllHistoryLogs] = useState([]);
@@ -312,28 +313,66 @@ export default function NativeApp() {
     }
   };
 
-  // 画像のリサイズ・軽量化・Base64変換
-  const processAndOptimizeImage = async (imageUri) => {
-    // 撮影直後にまずプレビューとローディングを画面に即座に表示
-    setSelectedImageUri(imageUri);
-    setAnalyzing(true);
-    setProgressMsg('画像を最適化中...');
-
+  // 料理写真の永続ディレクトリ保存処理 (OSキャッシュ削除対策)
+  const saveMealPhotoToPermanentStorage = async (tempUri) => {
+    if (!tempUri) return '';
     try {
-      // 最大幅 1024px にリサイズ＆圧縮
-      const manipResult = await ImageManipulator.manipulateAsync(
-        imageUri,
-        [{ resize: { width: 1024 } }],
-        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
-      );
-      
-      if (manipResult.uri) {
-        setSelectedImageUri(manipResult.uri);
+      const photosDir = `${FileSystem.documentDirectory}meal_photos/`;
+      const dirInfo = await FileSystem.getInfoAsync(photosDir);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(photosDir, { intermediates: true });
       }
 
-      let base64Data = manipResult.base64;
+      // ストレージ容量削減のため、最大幅600px, 圧縮率0.7で永続化保存
+      const manip = await ImageManipulator.manipulateAsync(
+        tempUri,
+        [{ resize: { width: 600 } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+      );
+
+      const fileName = `meal_${Date.now()}_${Math.floor(Math.random() * 1000)}.jpg`;
+      const permUri = `${photosDir}${fileName}`;
+
+      await FileSystem.copyAsync({
+        from: manip.uri || tempUri,
+        to: permUri
+      });
+
+      return permUri;
+    } catch (err) {
+      console.warn('Failed to save photo permanently, using original temp URI:', err);
+      return tempUri;
+    }
+  };
+
+  // 画像のリサイズ・軽量化・Base64変換 (AI用超軽量処理)
+  const processAndOptimizeImage = async (imageUri) => {
+    // 撮影直後にプレビューを表示
+    setSelectedImageUri(imageUri);
+    setAnalyzing(true);
+    setProgressMsg('AI用に画像を軽量最適化中...');
+
+    try {
+      // 1. プレビュー & 保存用URIの作成 (最大幅600px, 圧縮率0.7)
+      const previewManip = await ImageManipulator.manipulateAsync(
+        imageUri,
+        [{ resize: { width: 600 } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+      );
+      if (previewManip.uri) {
+        setSelectedImageUri(previewManip.uri);
+      }
+
+      // 2. AI送信用超軽量Base64の作成 (最大幅512px, 圧縮率0.5 で通信量を約30〜70KBに激減)
+      const aiManip = await ImageManipulator.manipulateAsync(
+        imageUri,
+        [{ resize: { width: 512 } }],
+        { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      );
+
+      let base64Data = aiManip.base64;
       if (!base64Data) {
-        base64Data = await convertUriToBase64(manipResult.uri || imageUri);
+        base64Data = await convertUriToBase64(aiManip.uri || previewManip.uri || imageUri);
       } else {
         base64Data = `data:image/jpeg;base64,${base64Data}`;
       }
@@ -346,7 +385,7 @@ export default function NativeApp() {
         Alert.alert('画像取得エラー', '写真データの処理に失敗しました。');
       }
     } catch (e) {
-      console.error('Failed to optimize image:', e);
+      console.error('Failed to optimize image for AI:', e);
       // フォールバック: 元の画像URIでBase64を直接試みる
       try {
         const fallbackB64 = await convertUriToBase64(imageUri);
@@ -623,6 +662,12 @@ export default function NativeApp() {
     const finalC = Number(((Number(carbsInput) || 0) * mult).toFixed(1));
     const finalNa = Number(((Number(sodiumInput) || 0) * mult).toFixed(1));
 
+    // 選択された写真を永続ストレージ(FileSystem.documentDirectory)に保存
+    let permanentPhotoPath = '';
+    if (selectedImageUri) {
+      permanentPhotoPath = await saveMealPhotoToPermanentStorage(selectedImageUri);
+    }
+
     await handleSaveMeal({
       name: mealNameInput,
       mealType,
@@ -631,7 +676,7 @@ export default function NativeApp() {
       fat: finalF,
       carbs: finalC,
       sodium: finalNa,
-      photoUrl: selectedImageUri || '',
+      photoUrl: permanentPhotoPath || selectedImageUri || '',
       memo: recordMode === 'ocr' ? `【成分表示モード】摂取量: ${portionPercentage}%` : `【料理写真モード】量: ${portionMultiplier}倍`
     });
 
@@ -769,30 +814,43 @@ export default function NativeApp() {
             <Text style={styles.emptyText}>この日付の食事記録はまだありません。</Text>
           ) : (
             mealLogs.map((log) => (
-              <View key={log.id} style={styles.mealItem}>
-                <View style={styles.mealInfo}>
-                  <Text style={styles.mealName}>{log.name}</Text>
-                  <Text style={styles.mealDetail}>
-                    {log.calories} kcal | P:{log.protein}g F:{log.fat}g C:{log.carbs}g
-                  </Text>
-                  {log.memo ? <Text style={styles.mealMemo}>{log.memo}</Text> : null}
+              <View key={log.id} style={styles.mealCardContainer}>
+                {/* 上段: 料理写真 + テキスト広幅表示 */}
+                <View style={styles.mealCardTopRow}>
+                  {log.photoUrl ? (
+                    <TouchableOpacity onPress={() => setSelectedPreviewPhoto(log.photoUrl)}>
+                      <Image
+                        source={{ uri: log.photoUrl }}
+                        style={styles.mealCardPhoto}
+                      />
+                    </TouchableOpacity>
+                  ) : null}
+                  <View style={styles.mealCardInfo}>
+                    <Text style={styles.mealName}>{log.name}</Text>
+                    <Text style={styles.mealDetail}>
+                      {log.calories} kcal | P:{log.protein}g F:{log.fat}g C:{log.carbs}g
+                    </Text>
+                    {log.memo ? <Text style={styles.mealMemo}>{log.memo}</Text> : null}
+                  </View>
                 </View>
-                <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+
+                {/* 下段: アクションボタンエリア */}
+                <View style={styles.mealCardBottomRow}>
                   {(() => {
                     const isFav = favorites.some(f => (f.name || '').trim().toLowerCase() === (log.name || '').trim().toLowerCase());
                     return (
                       <TouchableOpacity
                         onPress={() => handleToggleFavorite(log)}
                         style={[
-                          styles.editButton,
+                          styles.actionChip,
                           {
-                            backgroundColor: isFav ? 'rgba(245, 158, 11, 0.2)' : '#334155',
-                            borderColor: isFav ? '#f59e0b' : 'transparent',
-                            borderWidth: isFav ? 1 : 0
+                            backgroundColor: isFav ? 'rgba(245, 158, 11, 0.2)' : '#1e293b',
+                            borderColor: isFav ? '#f59e0b' : '#334155',
+                            borderWidth: 1
                           }
                         ]}
                       >
-                        <Text style={[styles.editButtonText, { color: isFav ? '#f59e0b' : '#94a3b8' }]}>
+                        <Text style={[styles.actionChipText, { color: isFav ? '#f59e0b' : '#94a3b8' }]}>
                           {isFav ? '★' : '☆'}
                         </Text>
                       </TouchableOpacity>
@@ -810,21 +868,21 @@ export default function NativeApp() {
                       photoUrl: log.photoUrl,
                       memo: log.memo
                     })}
-                    style={[styles.editButton, { backgroundColor: '#10b981' }]}
+                    style={[styles.actionChip, { backgroundColor: '#10b981' }]}
                   >
-                    <Text style={styles.editButtonText}>再追加</Text>
+                    <Text style={[styles.actionChipText, { color: '#ffffff' }]}>＋ 再追加</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleOpenEditModal(log)}
-                    style={styles.editButton}
+                    style={[styles.actionChip, { backgroundColor: '#3b82f6' }]}
                   >
-                    <Text style={styles.editButtonText}>編集</Text>
+                    <Text style={[styles.actionChipText, { color: '#ffffff' }]}>編集</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleDeleteMeal(log.id)}
-                    style={styles.deleteButton}
+                    style={[styles.actionChip, { backgroundColor: '#ef4444' }]}
                   >
-                    <Text style={styles.deleteButtonText}>削除</Text>
+                    <Text style={[styles.actionChipText, { color: '#ffffff' }]}>削除</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -990,6 +1048,21 @@ export default function NativeApp() {
                         justifyContent: 'space-between'
                       }}
                     >
+                      {item.photoUrl ? (
+                        <TouchableOpacity onPress={() => setSelectedPreviewPhoto(item.photoUrl)}>
+                          <Image
+                            source={{ uri: item.photoUrl }}
+                            style={{
+                              width: 44,
+                              height: 44,
+                              borderRadius: 8,
+                              marginRight: 10,
+                              borderWidth: 1,
+                              borderColor: '#334155'
+                            }}
+                          />
+                        </TouchableOpacity>
+                      ) : null}
                       <View style={{ flex: 1, marginRight: 10 }}>
                         <Text style={{ color: '#f8fafc', fontWeight: 'bold', fontSize: 14, marginBottom: 2 }}>
                           {item.name} {item.frequentCount ? `(${item.frequentCount}回)` : ''}
@@ -1719,6 +1792,44 @@ export default function NativeApp() {
           </ScrollView>
         </View>
       </Modal>
+
+      {/* 料理写真フルスクリーンプレビューモーダル */}
+      <Modal visible={!!selectedPreviewPhoto} transparent animationType="fade">
+        <TouchableOpacity
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(5, 8, 16, 0.92)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: 16
+          }}
+          activeOpacity={1}
+          onPress={() => setSelectedPreviewPhoto(null)}
+        >
+          <TouchableOpacity
+            style={{
+              position: 'absolute',
+              top: 40,
+              right: 20,
+              backgroundColor: 'rgba(255, 255, 255, 0.2)',
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderRadius: 20,
+              zIndex: 10
+            }}
+            onPress={() => setSelectedPreviewPhoto(null)}
+          >
+            <Text style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 14 }}>✕ 閉じる</Text>
+          </TouchableOpacity>
+          {selectedPreviewPhoto ? (
+            <Image
+              source={{ uri: selectedPreviewPhoto }}
+              style={{ width: '92%', height: '75%', borderRadius: 16 }}
+              resizeMode="contain"
+            />
+          ) : null}
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1839,6 +1950,49 @@ const styles = StyleSheet.create({
     color: '#64748b',
     textAlign: 'center',
     marginVertical: 20
+  },
+  mealCardContainer: {
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#1e293b'
+  },
+  mealCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12
+  },
+  mealCardPhoto: {
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#334155'
+  },
+  mealCardInfo: {
+    flex: 1,
+    justifyContent: 'center'
+  },
+  mealCardBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#1e293b'
+  },
+  actionChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 6
+  },
+  actionChipText: {
+    fontSize: 12,
+    fontWeight: 'bold'
   },
   mealItem: {
     flexDirection: 'row',

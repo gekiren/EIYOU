@@ -3,12 +3,13 @@
 ## 1. 概要
 本ドキュメントは栄養記録・管理アプリ (EIYOU) の開発における基本規約、UI仕様、API仕様、ブランチ・ビルド運用ルールを定義します。
 
-## 2. アーキテクチャとディレクトリ構造
-- **Web / Native ハイブリッド・PWA**: React + Vite + Dexie.js + Lucide-React
+## 2. アーキテクチャと一本化開発方針
+- **Native版 (Expo / Android) 一本化**: 本プロジェクトの開発・機能追加・UI修正・動作検証はすべて Native版 (`src/App.native.jsx` / Expo / Android) に一本化して進行します。
+- **アーキテクチャ**: React Native + Expo + AsyncStorage/safeStorage (Native DB) + Lucide-React
 - **共有モジュール (`src/shared_modules`)**:
   - `ai/`: Gemini 3.6 Flash / DeepSeek V4 統合栄養解析モジュール
   - `ocr/`: tesseract.js オンデバイスOCR ＆ パース
-  - `db/`: IndexedDB (Dexie.js) ローカルストレージ
+  - `db/`: Hybrid / Native ストレージ
   - `csv/`: CSVエクスポート・インポート
   - `worker/`: Cloudflare Worker APIプロキシ
 
