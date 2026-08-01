@@ -1404,12 +1404,17 @@ export default function NativeApp() {
 
       {/* 設定モーダル */}
       <Modal visible={isSettingsModalOpen} animationType="slide" transparent onRequestClose={() => setIsSettingsModalOpen(false)}>
-        <View style={[styles.modalOverlay, { justifyContent: 'center', alignItems: 'center' }]}>
-          <View style={[styles.modalContent, { width: '100%', maxHeight: '90%', height: '90%', padding: 16, display: 'flex', flexDirection: 'column', overflow: 'hidden' }]}>
-            <Text style={styles.modalTitle}>⚙️ アプリ設定</Text>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.75)', justifyContent: 'center', alignItems: 'center', padding: 12 }}>
+          <View style={{ width: '100%', maxHeight: '85%', backgroundColor: '#1e293b', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#334155', display: 'flex', flexDirection: 'column' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={styles.modalTitle}>⚙️ アプリ設定</Text>
+              <TouchableOpacity onPress={() => setIsSettingsModalOpen(false)}>
+                <Text style={{ color: '#94a3b8', fontSize: 18, fontWeight: 'bold', padding: 4 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
 
             {/* タブナビゲーション */}
-            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16, borderBottomWidth: 1, borderBottomColor: '#334155', paddingBottom: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#334155', paddingBottom: 8 }}>
               {[
                 { key: 'goals', label: '🎯 栄養目標' },
                 { key: 'obsidian', label: '📄 Obsidian' },
@@ -1439,7 +1444,7 @@ export default function NativeApp() {
 
             <ScrollView
               style={{ flex: 1, width: '100%' }}
-              contentContainerStyle={{ paddingBottom: 100, flexGrow: 1 }}
+              contentContainerStyle={{ paddingBottom: 24 }}
               nestedScrollEnabled={true}
               showsVerticalScrollIndicator={true}
               keyboardShouldPersistTaps="handled"
