@@ -132,7 +132,12 @@ export async function analyzeMealPhoto({
       if (onProgress) onProgress('Gemini 3.6 Flash で食事解析中...');
       return await analyzeNutritionWithGemini(base64Image, geminiApiKey, 'gemini-3.6-flash', ocrResult.text);
     } catch (geminiErr) {
-      console.warn('Gemini API failed:', geminiErr);
+      console.warn('Gemini API failed, retrying with 2.5-flash:', geminiErr);
+      try {
+        return await analyzeNutritionWithGemini(base64Image, geminiApiKey, 'gemini-2.5-flash', ocrResult.text);
+      } catch (err2) {
+        console.warn('Gemini fallback failed:', err2);
+      }
     }
   }
 
@@ -158,7 +163,8 @@ export async function analyzeMealPhoto({
 export async function analyzeMealTextWithAI({
   textInput,
   geminiApiKey,
-  deepSeekApiKey
+  deepSeekApiKey,
+  workerProxyUrl = SECURE_WORKER_PROXY_URL
 }) {
   if (!textInput || !textInput.trim()) {
     throw new Error('入力テキストが空です。');
@@ -180,29 +186,49 @@ export async function analyzeMealTextWithAI({
 }
 `;
 
-  // Gemini 3.6 Flash 直接呼出
-  if (geminiApiKey) {
+  // 1. Worker Proxy 経由のテキスト解析試行
+  if (workerProxyUrl) {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${geminiApiKey}`;
-      const response = await fetch(url, {
+      const cleanUrl = workerProxyUrl.replace(/\/$/, '') + '/api/analyze-nutrition-text';
+      const response = await fetch(cleanUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
-        })
+        body: JSON.stringify({ textInput })
       });
       if (response.ok) {
         const data = await response.json();
-        const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (rawText) return JSON.parse(rawText.trim());
+        if (data && data.calories !== undefined) return data;
       }
     } catch (e) {
-      console.warn('Gemini text analysis error:', e);
+      console.warn('Worker proxy text analysis failed, falling back to direct API keys:', e);
     }
   }
 
-  // DeepSeek 直接呼出
+  // 2. Gemini 3.6 Flash 直接呼出 (フォールバック 2.5 Flash)
+  if (geminiApiKey) {
+    for (const model of ['gemini-3.6-flash', 'gemini-2.5-flash']) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+          })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (rawText) return JSON.parse(rawText.trim());
+        }
+      } catch (e) {
+        console.warn(`Gemini (${model}) text analysis error:`, e);
+      }
+    }
+  }
+
+  // 3. DeepSeek 直接呼出
   if (deepSeekApiKey) {
     try {
       const response = await fetch('https://api.deepseek.com/chat/completions', {
@@ -227,17 +253,46 @@ export async function analyzeMealTextWithAI({
     }
   }
 
-  // フォールバック（オフライン・近似値推定）
+  // 4. オフライン時／AI未接続時の簡易キーワード推定フォールバック
+  const text = textInput.toLowerCase();
+  let baseCal = 350;
+  let baseP = 12;
+  let baseF = 10;
+  let baseC = 45;
+  let baseSalt = 1.0;
+
+  if (text.includes('ハンバーグ') || text.includes('肉') || text.includes('ステーキ') || text.includes('焼肉')) {
+    baseCal += 300; baseP += 20; baseF += 20; baseSalt += 1.0;
+  }
+  if (text.includes('ラーメン') || text.includes('パスタ') || text.includes('麺') || text.includes('うどん')) {
+    baseCal += 250; baseC += 40; baseF += 8; baseSalt += 2.5;
+  }
+  if (text.includes('サラダ') || text.includes('野菜')) {
+    baseCal += 50; baseC += 5;
+  }
+  if (text.includes('大盛り') || text.includes('メガ')) {
+    baseCal = Math.round(baseCal * 1.4);
+    baseP = Math.round(baseP * 1.3);
+    baseF = Math.round(baseF * 1.3);
+    baseC = Math.round(baseC * 1.4);
+  }
+  if (text.includes('小盛り') || text.includes('少なめ')) {
+    baseCal = Math.round(baseCal * 0.7);
+    baseP = Math.round(baseP * 0.7);
+    baseF = Math.round(baseF * 0.7);
+    baseC = Math.round(baseC * 0.7);
+  }
+
   const words = textInput.split(/[\s,、]+/);
   return {
     mealName: textInput.substring(0, 30),
-    calories: 450,
-    protein: 18.0,
-    fat: 12.0,
-    carbs: 60.0,
-    sodium: 1.5,
+    calories: baseCal,
+    protein: baseP,
+    fat: baseF,
+    carbs: baseC,
+    sodium: Number(baseSalt.toFixed(1)),
     ingredients: words,
-    advice: 'オフライン簡易推定です。APIキーを登録するとより精度の高いAI解析が可能です。'
+    advice: 'オフライン推定結果です。AIプロキシ/APIキーを設定すると高精度な自動分析が可能です。'
   };
 }
 

@@ -19,7 +19,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Updates from 'expo-updates';
 import { safeStorage } from './shared_modules/storage/safeStorage.js';
 import { nutritionDb } from './shared_modules/db/nutritionDb.js';
-import { analyzeMealPhoto } from './shared_modules/ai/nutritionAiService.js';
+import { analyzeMealPhoto, analyzeMealTextWithAI } from './shared_modules/ai/nutritionAiService.js';
 import { SECURE_WORKER_PROXY_URL } from './config/constants.js';
 import { obsidianSyncService } from './shared_modules/obsidian/obsidianSyncService.js';
 import HistoryChartCard from './components/HistoryChartCard.native.jsx';
@@ -756,22 +756,34 @@ export default function NativeApp() {
 
     setLoading(true);
     try {
-      const dummyCalories = 250;
+      const parsedData = await analyzeMealTextWithAI({
+        textInput: chatInput.trim(),
+        workerProxyUrl: SECURE_WORKER_PROXY_URL
+      });
+
+      const mealName = parsedData.mealName || chatInput.trim();
+      const calories = Number(parsedData.calories) || 0;
+      const protein = Number(parsedData.protein) || 0;
+      const fat = Number(parsedData.fat) || 0;
+      const carbs = Number(parsedData.carbs) || 0;
+      const sodium = Number(parsedData.sodium) || 0;
+
       await handleSaveMeal({
-        name: chatInput,
+        name: mealName,
         mealType: 'snack',
-        calories: dummyCalories,
-        protein: 5,
-        fat: 3,
-        carbs: 45,
-        sodium: 1.2,
-        memo: 'AIチャット解析ログ'
+        calories,
+        protein,
+        fat,
+        carbs,
+        sodium,
+        memo: parsedData.advice ? `AI解析: ${parsedData.advice}` : 'AIチャット解析ログ'
       });
       setChatInput('');
       setIsChatModalOpen(false);
-      Alert.alert('AI記録完了', `「${chatInput}」の栄養ログを保存しました`);
+      Alert.alert('AI記録完了', `「${mealName}」(${calories}kcal) の栄養ログを保存しました`);
     } catch (err) {
-      Alert.alert('解析エラー', 'AI解析通信に失敗しました。');
+      console.error('Chat analysis error:', err);
+      Alert.alert('解析エラー', 'AI解析通信に失敗しました: ' + (err.message || ''));
     } finally {
       setLoading(false);
     }
