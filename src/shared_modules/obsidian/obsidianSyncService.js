@@ -237,7 +237,13 @@ tags:
       content = this.generateIndividualMarkdown(allLogs, userGoals);
     }
 
-    return await this._writeFileToVault(fileName, content, config);
+    const meta = {
+      isAppendMode: config.saveMode === 'append',
+      dateStr,
+      mealLogs: logs
+    };
+
+    return await this._writeFileToVault(fileName, content, config, meta);
   }
 
   /**
@@ -276,7 +282,7 @@ tags:
   /**
    * 物理ストレージへの書き込み抽象化（Web / Native / SAF / Fallback）
    */
-  async _writeFileToVault(relativePath, content, config) {
+  async _writeFileToVault(relativePath, content, config, meta = {}) {
     const safePath = relativePath.split('/').map(sanitizeFileName).join('/');
 
     // 1. React Native / Expo (StorageAccessFramework SAF)
@@ -301,16 +307,47 @@ tags:
           }
         }
 
-        // ファイル作成または上書き
-        let fileUri;
+        // ディレクトリ内の既存ファイル一覧を取得して同名ファイルを検索
+        let fileUri = null;
+        let existingContent = '';
         try {
-          fileUri = await StorageAccessFramework.createFileAsync(targetDirUri, fileName, 'text/markdown');
+          const existingFiles = await StorageAccessFramework.readDirectoryAsync(targetDirUri);
+          if (Array.isArray(existingFiles)) {
+            const foundUri = existingFiles.find(uri => {
+              const decoded = decodeURIComponent(uri);
+              return (
+                decoded.endsWith('/' + fileName) ||
+                decoded.endsWith('%2F' + fileName) ||
+                uri.endsWith('/' + encodeURIComponent(fileName))
+              );
+            });
+            if (foundUri) {
+              fileUri = foundUri;
+              if (meta.isAppendMode) {
+                try {
+                  existingContent = await StorageAccessFramework.readAsStringAsync(foundUri, { encoding: 'utf8' });
+                } catch (readErr) {
+                  console.warn('[ObsidianSync] Failed to read existing daily note:', readErr);
+                }
+              }
+            }
+          }
         } catch (e) {
-          // すでにファイルが存在する場合の検索フォールバック
-          fileUri = `${targetDirUri}/${encodeURIComponent(fileName)}`;
+          console.warn('[ObsidianSync] Directory search for existing file failed:', e);
         }
 
-        await StorageAccessFramework.writeAsStringAsync(fileUri, content, { encoding: 'utf8' });
+        // append モードで既存ノートがある場合は内容を統合
+        let finalContent = content;
+        if (meta.isAppendMode && meta.dateStr) {
+          finalContent = this.mergeDailyAppendContent(existingContent, meta.dateStr, meta.mealLogs || []);
+        }
+
+        // 同名ファイルが存在しない場合のみ新規作成
+        if (!fileUri) {
+          fileUri = await StorageAccessFramework.createFileAsync(targetDirUri, fileName, 'text/markdown');
+        }
+
+        await StorageAccessFramework.writeAsStringAsync(fileUri, finalContent, { encoding: 'utf8' });
         return { success: true, path: safePath, target: 'SAF' };
       } catch (err) {
         console.warn('[ObsidianSync] SAF write failed, falling back to root/web download', err);
