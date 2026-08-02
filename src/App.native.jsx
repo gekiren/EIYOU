@@ -76,9 +76,12 @@ export default function NativeApp() {
 
   // 手動 / 入力項目
   const [chatInput, setChatInput] = useState('');
-  const [chatAnalyzing, setChatAnalyzing] = useState(false); // AI解析中フラグ
-  const [chatAnalyzedData, setChatAnalyzedData] = useState(null); // AI解析結果プレビュー
-  const [chatMealType, setChatMealType] = useState('lunch'); // 食事タイプ選択
+  const [chatAnalyzing, setChatAnalyzing] = useState(false);
+  const [chatAnalyzedData, setChatAnalyzedData] = useState(null);
+  const [chatMealType, setChatMealType] = useState('lunch');
+  const [chatFollowUpInput, setChatFollowUpInput] = useState(''); // フェーズ2の追加チャット入力
+  const [chatFollowUpAnalyzing, setChatFollowUpAnalyzing] = useState(false); // 追加チャット解析中
+  const [chatMessages, setChatMessages] = useState([]); // 会話履歴
   const [mealNameInput, setMealNameInput] = useState('');
   const [caloriesInput, setCaloriesInput] = useState('');
   const [proteinInput, setProteinInput] = useState('');
@@ -750,22 +753,49 @@ export default function NativeApp() {
     setIsPhotoModalOpen(false);
   };
 
-  // チャット: AI解析フェーズ（解析結果をプレビュー表示）
+  // チャット: AI解析フェーズ
   const handleAnalyzeChatMeal = async () => {
     if (!chatInput.trim() || chatAnalyzing) return;
     setChatAnalyzing(true);
     setChatAnalyzedData(null);
+    setChatMessages([{ sender: 'user', text: chatInput.trim() }]);
+    setChatFollowUpInput('');
     try {
       const parsedData = await analyzeMealTextWithAI({
         textInput: chatInput.trim(),
         workerProxyUrl: SECURE_WORKER_PROXY_URL
       });
       setChatAnalyzedData(parsedData);
+      setChatMessages(prev => [...prev, { sender: 'ai', text: `「${parsedData.mealName}」として解析しました。` }]);
     } catch (err) {
       console.error('Chat analysis error:', err);
       Alert.alert('解析エラー', 'AI解析に失敗しました: ' + (err.message || ''));
     } finally {
       setChatAnalyzing(false);
+    }
+  };
+
+  // チャット: フェーズ2の追加チャットでAI再解析
+  const handleFollowUpChat = async () => {
+    if (!chatFollowUpInput.trim() || chatFollowUpAnalyzing) return;
+    const followUp = chatFollowUpInput.trim();
+    setChatFollowUpInput('');
+    setChatFollowUpAnalyzing(true);
+    setChatMessages(prev => [...prev, { sender: 'user', text: followUp }]);
+    // 元の入力 + 追加メッセージを組み合わせて再解析
+    const combinedInput = `${chatInput}${followUp ? `。追加情報: ${followUp}` : ''}`;
+    try {
+      const parsedData = await analyzeMealTextWithAI({
+        textInput: combinedInput,
+        workerProxyUrl: SECURE_WORKER_PROXY_URL
+      });
+      setChatAnalyzedData(parsedData);
+      setChatMessages(prev => [...prev, { sender: 'ai', text: `内容を更新しました。「${parsedData.mealName}」(${parsedData.calories}kcal)` }]);
+    } catch (err) {
+      console.error('Follow-up chat error:', err);
+      setChatMessages(prev => [...prev, { sender: 'ai', text: '再解析に失敗しました。もう一度お試しください。' }]);
+    } finally {
+      setChatFollowUpAnalyzing(false);
     }
   };
 
@@ -793,6 +823,8 @@ export default function NativeApp() {
       setChatInput('');
       setChatAnalyzedData(null);
       setChatMealType('lunch');
+      setChatMessages([]);
+      setChatFollowUpInput('');
       setIsChatModalOpen(false);
       Alert.alert('AI記録完了', `「${mealName}」(${calories}kcal) を保存しました`);
     } catch (err) {
@@ -1457,17 +1489,20 @@ export default function NativeApp() {
               </>
             )}
 
-            {/* フェーズ2: 解析結果確認 */}
+            {/* フェーズ2: 解析結果確認 + 追加チャット */}
             {chatAnalyzedData && (
-              <>
-                <Text style={[styles.modalSub, { color: '#34d399' }]}>✅ AI解析完了 — 内容を確認してください</Text>
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingBottom: 8 }}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                <Text style={[styles.modalSub, { color: '#34d399', marginBottom: 8 }]}>✅ AI解析完了 — 追加で修正も可能です</Text>
 
-                {/* 食事名 */}
-                <View style={{ backgroundColor: '#0f172a', borderRadius: 10, padding: 12, marginTop: 8, marginBottom: 8, borderWidth: 1, borderColor: '#334155' }}>
-                  <Text style={{ color: '#e2e8f0', fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>🍽 {chatAnalyzedData.mealName}</Text>
-
-                  {/* 栄養価グリッド */}
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {/* 栄養価カード */}
+                <View style={{ backgroundColor: '#0f172a', borderRadius: 10, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#334155' }}>
+                  <Text style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 'bold', marginBottom: 8 }}>🍽 {chatAnalyzedData.mealName}</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
                     {[
                       { label: 'カロリー', value: chatAnalyzedData.calories, unit: 'kcal', color: '#f59e0b' },
                       { label: 'タンパク質', value: chatAnalyzedData.protein, unit: 'g', color: '#3b82f6' },
@@ -1477,16 +1512,80 @@ export default function NativeApp() {
                     ].map(item => (
                       <View key={item.label} style={{ backgroundColor: '#1e293b', borderRadius: 8, padding: 8, minWidth: '28%', alignItems: 'center', borderWidth: 1, borderColor: item.color + '44' }}>
                         <Text style={{ color: item.color, fontSize: 11, marginBottom: 2 }}>{item.label}</Text>
-                        <Text style={{ color: '#f1f5f9', fontSize: 15, fontWeight: 'bold' }}>{item.value}</Text>
+                        <Text style={{ color: '#f1f5f9', fontSize: 14, fontWeight: 'bold' }}>{item.value}</Text>
                         <Text style={{ color: '#64748b', fontSize: 10 }}>{item.unit}</Text>
                       </View>
                     ))}
                   </View>
-
-                  {/* アドバイス */}
                   {chatAnalyzedData.advice && (
-                    <Text style={{ color: '#94a3b8', fontSize: 12, fontStyle: 'italic' }}>💡 {chatAnalyzedData.advice}</Text>
+                    <Text style={{ color: '#94a3b8', fontSize: 11, fontStyle: 'italic' }}>💡 {chatAnalyzedData.advice}</Text>
                   )}
+                </View>
+
+                {/* 会話履歴 */}
+                {chatMessages.length > 0 && (
+                  <View style={{ marginBottom: 10 }}>
+                    {chatMessages.map((msg, idx) => (
+                      <View
+                        key={idx}
+                        style={{
+                          flexDirection: 'row',
+                          justifyContent: msg.sender === 'user' ? 'flex-end' : 'flex-start',
+                          marginBottom: 6,
+                        }}
+                      >
+                        <View style={{
+                          backgroundColor: msg.sender === 'user' ? '#8b5cf6' : '#1e293b',
+                          borderRadius: 12,
+                          borderBottomRightRadius: msg.sender === 'user' ? 2 : 12,
+                          borderBottomLeftRadius: msg.sender === 'ai' ? 2 : 12,
+                          paddingHorizontal: 12,
+                          paddingVertical: 7,
+                          maxWidth: '80%',
+                          borderWidth: 1,
+                          borderColor: msg.sender === 'user' ? '#8b5cf6' : '#334155',
+                        }}>
+                          <Text style={{ color: '#f1f5f9', fontSize: 12 }}>{msg.text}</Text>
+                        </View>
+                      </View>
+                    ))}
+                    {chatFollowUpAnalyzing && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                        <ActivityIndicator size="small" color="#06b6d4" />
+                        <Text style={{ color: '#94a3b8', fontSize: 12 }}>AIが再解析中...</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* 追加チャット入力 */}
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14, alignItems: 'center' }}>
+                  <TextInput
+                    style={[styles.input, { flex: 1, marginBottom: 0, minHeight: 44 }]}
+                    placeholder="例: 実は大盛りだった、サラダも食べた"
+                    placeholderTextColor="#64748b"
+                    value={chatFollowUpInput}
+                    onChangeText={setChatFollowUpInput}
+                    editable={!chatFollowUpAnalyzing && !loading}
+                    multiline
+                  />
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: chatFollowUpAnalyzing || !chatFollowUpInput.trim() ? '#334155' : '#06b6d4',
+                      borderRadius: 10,
+                      paddingHorizontal: 14,
+                      paddingVertical: 12,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                    onPress={handleFollowUpChat}
+                    disabled={chatFollowUpAnalyzing || !chatFollowUpInput.trim() || loading}
+                  >
+                    {chatFollowUpAnalyzing
+                      ? <ActivityIndicator size="small" color="#fff" />
+                      : <Text style={{ color: '#fff', fontSize: 13, fontWeight: 'bold' }}>送信</Text>
+                    }
+                  </TouchableOpacity>
                 </View>
 
                 {/* 食事タイプ選択 */}
@@ -1516,23 +1615,28 @@ export default function NativeApp() {
                   ))}
                 </View>
 
+                {/* ボタン行 */}
                 <View style={styles.modalButtons}>
                   <TouchableOpacity
                     style={[styles.modalBtn, { backgroundColor: '#334155' }]}
-                    onPress={() => setChatAnalyzedData(null)}
-                    disabled={loading}
+                    onPress={() => {
+                      setChatAnalyzedData(null);
+                      setChatMessages([]);
+                      setChatFollowUpInput('');
+                    }}
+                    disabled={loading || chatFollowUpAnalyzing}
                   >
                     <Text style={styles.modalBtnText}>↩ やり直す</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.modalBtn, { backgroundColor: loading ? '#1a6b4a' : '#10b981' }]}
                     onPress={handleConfirmChatMeal}
-                    disabled={loading}
+                    disabled={loading || chatFollowUpAnalyzing}
                   >
                     <Text style={styles.modalBtnText}>{loading ? '保存中...' : '✅ 保存する'}</Text>
                   </TouchableOpacity>
                 </View>
-              </>
+              </ScrollView>
             )}
 
           </View>
