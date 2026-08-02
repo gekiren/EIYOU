@@ -1442,13 +1442,24 @@ export default function NativeApp() {
           }
         }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' }}>
+          <View style={{
+            backgroundColor: '#1e293b',
+            borderTopLeftRadius: 20,
+            borderTopRightRadius: 20,
+            borderWidth: 1,
+            borderColor: '#334155',
+            paddingHorizontal: 18,
+            paddingTop: 16,
+            paddingBottom: 24,
+            maxHeight: '90%',
+            minHeight: 260,
+          }}>
             <Text style={styles.modalTitle}>💬 チャット栄養AI記録</Text>
 
             {/* フェーズ1: テキスト入力 */}
             {!chatAnalyzedData && (
-              <>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.modalSub}>食べたものを自由に入力してください</Text>
                 <TextInput
                   style={[styles.input, { height: 80 }]}
@@ -1465,7 +1476,7 @@ export default function NativeApp() {
                     <Text style={{ color: '#94a3b8', fontSize: 13 }}>AIが栄養価を解析中...</Text>
                   </View>
                 )}
-                <View style={styles.modalButtons}>
+                <View style={[styles.modalButtons, { marginTop: 16 }]}>
                   <TouchableOpacity
                     style={[styles.modalBtn, { backgroundColor: '#64748b' }]}
                     onPress={() => {
@@ -1486,7 +1497,7 @@ export default function NativeApp() {
                     <Text style={styles.modalBtnText}>{chatAnalyzing ? '解析中...' : '🤖 AIで解析'}</Text>
                   </TouchableOpacity>
                 </View>
-              </>
+              </View>
             )}
 
             {/* フェーズ2: 解析結果確認 + 追加チャット */}
