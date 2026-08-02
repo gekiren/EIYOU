@@ -124,6 +124,7 @@ export default function HistorySelectModal({ selectedDate, onClose, onSave, onFa
       fat: Number(item.fat) || 0,
       carbs: Number(item.carbs) || 0,
       sodium: Number(item.sodium) || 0,
+      fiber: Number(item.fiber) || 0,
       photoUrl: item.photoUrl || '',
       memo: item.memo ? `(履歴/お気に入りより追加) ${item.memo}` : '履歴/お気に入りより追加'
     };

@@ -9,21 +9,24 @@ export default function Dashboard({ mealLogs, userGoals }) {
     acc.fat += Number(log.fat) || 0;
     acc.carbs += Number(log.carbs) || 0;
     acc.sodium += Number(log.sodium) || 0;
+    acc.fiber += Number(log.fiber) || 0;
     return acc;
-  }, { calories: 0, protein: 0, fat: 0, carbs: 0, sodium: 0 });
+  }, { calories: 0, protein: 0, fat: 0, carbs: 0, sodium: 0, fiber: 0 });
 
   const goals = userGoals || {
     calories: 2200,
     protein: 75,
     fat: 60,
     carbs: 280,
-    sodium: 7.0
+    sodium: 7.0,
+    fiber: 20.0
   };
 
   const calPercent = Math.min(100, Math.round((totals.calories / goals.calories) * 100));
   const pPercent = Math.min(100, Math.round((totals.protein / goals.protein) * 100));
   const fPercent = Math.min(100, Math.round((totals.fat / goals.fat) * 100));
   const cPercent = Math.min(100, Math.round((totals.carbs / goals.carbs) * 100));
+  const fiberPercent = Math.min(100, Math.round((totals.fiber / (goals.fiber || 20)) * 100));
 
   // カロリーによるPFCのエネルギー構成比（P:4kcal, F:9kcal, C:4kcal）
   const pCal = totals.protein * 4;
@@ -66,9 +69,9 @@ export default function Dashboard({ mealLogs, userGoals }) {
           <div className="progress-bar-fill" style={{ width: `${calPercent}%`, background: calPercent > 100 ? 'linear-gradient(90deg, #f59e0b, #ef4444)' : 'linear-gradient(90deg, #10b981, #06b6d4)' }} />
         </div>
 
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
-          <span>残り: {Math.max(0, goals.calories - totals.calories)} kcal</span>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
           <span>塩分: {totals.sodium.toFixed(1)} / {goals.sodium}g</span>
+          <span>食物繊維: {totals.fiber.toFixed(1)} / {goals.fiber || 20}g ({fiberPercent}%)</span>
         </div>
       </div>
 

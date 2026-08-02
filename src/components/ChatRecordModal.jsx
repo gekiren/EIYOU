@@ -75,6 +75,7 @@ export default function ChatRecordModal({
       fat: previewParsedData.fat || 0,
       carbs: previewParsedData.carbs || 0,
       sodium: previewParsedData.sodium || 0,
+      fiber: previewParsedData.fiber || 0,
       memo: 'チャット記録よりAI自動分解'
     };
 

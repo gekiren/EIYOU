@@ -92,10 +92,13 @@ export default function MealLogList({ mealLogs, onDeleteMeal, onEditMeal, onAddM
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '2px' }}>kcal</span>
               </div>
 
-              <div style={{ display: 'flex', gap: '8px', borderLeft: '1px solid var(--border-color)', paddingLeft: '12px' }}>
+              <div style={{ display: 'flex', gap: '8px', borderLeft: '1px solid var(--border-color)', paddingLeft: '12px', flexWrap: 'wrap' }}>
                 <span style={{ color: 'var(--color-protein)', fontWeight: 600 }}>P:{log.protein}g</span>
                 <span style={{ color: 'var(--color-fat)', fontWeight: 600 }}>F:{log.fat}g</span>
                 <span style={{ color: 'var(--color-carbs)', fontWeight: 600 }}>C:{log.carbs}g</span>
+                {log.fiber !== undefined && log.fiber !== null && (
+                  <span style={{ color: '#10b981', fontWeight: 600 }}>Fi:{log.fiber}g</span>
+                )}
               </div>
             </div>
 
@@ -127,6 +130,7 @@ export default function MealLogList({ mealLogs, onDeleteMeal, onEditMeal, onAddM
                     fat: log.fat,
                     carbs: log.carbs,
                     sodium: log.sodium,
+                    fiber: log.fiber,
                     photoUrl: log.photoUrl,
                     memo: log.memo
                   })}

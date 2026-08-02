@@ -19,6 +19,7 @@ export default function SettingsModal({
   const [fatGoal, setFatGoal] = useState(userGoals.fat || 60);
   const [carbsGoal, setCarbsGoal] = useState(userGoals.carbs || 280);
   const [sodiumGoal, setSodiumGoal] = useState(userGoals.sodium || 7.0);
+  const [fiberGoal, setFiberGoal] = useState(userGoals.fiber || 20.0);
 
   // 目標設定モード & PFC比率ステート
   // 'calorie_pfc': 1. カロリー + PFC% 指定
@@ -50,6 +51,7 @@ export default function SettingsModal({
       setFatGoal(f);
       setCarbsGoal(c);
       setSodiumGoal(userGoals.sodium || 7.0);
+      setFiberGoal(userGoals.fiber || 20.0);
 
       if (cal > 0) {
         const pr = Math.round(((p * 4) / cal) * 100);
@@ -144,7 +146,8 @@ export default function SettingsModal({
       protein: Number(proteinGoal),
       fat: Number(fatGoal),
       carbs: Number(carbsGoal),
-      sodium: Number(sodiumGoal)
+      sodium: Number(sodiumGoal),
+      fiber: Number(fiberGoal)
     });
 
     await obsidianSyncService.saveConfig({
@@ -450,6 +453,30 @@ export default function SettingsModal({
               </div>
             )}
 
+            {/* 食塩相当量 & 食物繊維目標 */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', marginBottom: '16px' }}>
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>塩分目標 (g/日)</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={sodiumGoal}
+                  onChange={(e) => setSodiumGoal(e.target.value)}
+                  className="input-field"
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#10b981', display: 'block', marginBottom: '4px' }}>食物繊維目標 (g/日)</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={fiberGoal}
+                  onChange={(e) => setFiberGoal(e.target.value)}
+                  className="input-field"
+                />
+              </div>
+            </div>
+
             {/* 計算結果サマリーカード */}
             <div style={{
               backgroundColor: 'rgba(30, 41, 59, 0.6)',
@@ -471,6 +498,12 @@ export default function SettingsModal({
                 </div>
                 <div style={{ fontSize: '0.8rem', color: '#fbbf24' }}>
                   C: {carbsGoal}g <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>({cRatio}%)</span>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                  塩分: {sodiumGoal}g
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#10b981' }}>
+                  食物繊維: {fiberGoal}g
                 </div>
               </div>
               {(Number(pRatio) + Number(fRatio) + Number(cRatio) !== 100) && (goalMode === 'calorie_pfc' || goalMode === 'protein_pfc') && (

@@ -39,6 +39,7 @@ export default function App() {
     fat: { min: -15, max: 15 },
     carbs: { min: -15, max: 15 },
     sodium: { min: -100, max: 0 },
+    fiber: { min: -15, max: 50 },
   };
 
   // 日別目標値
@@ -48,13 +49,13 @@ export default function App() {
       try {
         const parsed = JSON.parse(saved);
         return {
-          calories: 2200, protein: 75, fat: 60, carbs: 280, sodium: 7.0,
+          calories: 2200, protein: 75, fat: 60, carbs: 280, sodium: 7.0, fiber: 20.0,
           ...parsed,
           tolerances: { ...DEFAULT_TOLERANCES, ...(parsed.tolerances || {}) }
         };
       } catch (e) {}
     }
-    return { calories: 2200, protein: 75, fat: 60, carbs: 280, sodium: 7.0, tolerances: DEFAULT_TOLERANCES };
+    return { calories: 2200, protein: 75, fat: 60, carbs: 280, sodium: 7.0, fiber: 20.0, tolerances: DEFAULT_TOLERANCES };
   });
 
   const loadFavorites = async () => {

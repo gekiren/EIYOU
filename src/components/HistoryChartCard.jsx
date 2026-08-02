@@ -6,6 +6,7 @@ const NUTRIENT_CONFIG = {
   fat: { label: '脂質', unit: 'g', color: '#f59e0b', overflowColor: '#ea580c', underflowColor: '#64748b' },
   carbs: { label: '炭水化物', unit: 'g', color: '#a855f7', overflowColor: '#6b21a8', underflowColor: '#64748b' },
   sodium: { label: '塩分', unit: 'g', color: '#f43f5e', overflowColor: '#be123c', underflowColor: '#10b981' },
+  fiber: { label: '食物繊維', unit: 'g', color: '#10b981', overflowColor: '#059669', underflowColor: '#f59e0b' },
 };
 
 const DEFAULT_TOLERANCES = {
@@ -14,6 +15,7 @@ const DEFAULT_TOLERANCES = {
   fat: { min: -15, max: 15 },
   carbs: { min: -15, max: 15 },
   sodium: { min: -100, max: 0 },
+  fiber: { min: -15, max: 50 },
 };
 
 const PERIOD_OPTIONS = [

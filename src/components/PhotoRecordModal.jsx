@@ -72,7 +72,8 @@ export default function PhotoRecordModal({
           protein: res.protein || 20,
           fat: res.fat || 15,
           carbs: res.carbs || 65,
-          sodium: res.sodium || 2.0
+          sodium: res.sodium || 2.0,
+          fiber: res.fiber || 3.0
         };
         setSelectedCandidate(primary);
       }
@@ -85,27 +86,29 @@ export default function PhotoRecordModal({
 
   // 計算後の最終栄養価の算出 (成分表示ラベルモード)
   const calcLabelNutrients = () => {
-    if (!rawParsedData) return { calories: 0, protein: 0, fat: 0, carbs: 0, sodium: 0 };
+    if (!rawParsedData) return { calories: 0, protein: 0, fat: 0, carbs: 0, sodium: 0, fiber: 0 };
     const factor = servingRatio / 100;
     return {
       calories: Math.round((rawParsedData.calories || 0) * factor),
       protein: parseFloat(((rawParsedData.protein || 0) * factor).toFixed(1)),
       fat: parseFloat(((rawParsedData.fat || 0) * factor).toFixed(1)),
       carbs: parseFloat(((rawParsedData.carbs || 0) * factor).toFixed(1)),
-      sodium: parseFloat(((rawParsedData.sodium || 0) * factor).toFixed(1))
+      sodium: parseFloat(((rawParsedData.sodium || 0) * factor).toFixed(1)),
+      fiber: parseFloat(((rawParsedData.fiber || 0) * factor).toFixed(1))
     };
   };
 
   // 計算後の最終栄養価の算出 (料理写真モード)
   const calcDishNutrients = () => {
-    const base = selectedCandidate || rawParsedData || { calories: 0, protein: 0, fat: 0, carbs: 0, sodium: 0 };
+    const base = selectedCandidate || rawParsedData || { calories: 0, protein: 0, fat: 0, carbs: 0, sodium: 0, fiber: 0 };
     const factor = portionMultiplier;
     return {
       calories: Math.round((base.calories || 0) * factor),
       protein: parseFloat(((base.protein || 0) * factor).toFixed(1)),
       fat: parseFloat(((base.fat || 0) * factor).toFixed(1)),
       carbs: parseFloat(((base.carbs || 0) * factor).toFixed(1)),
-      sodium: parseFloat(((base.sodium || 0) * factor).toFixed(1))
+      sodium: parseFloat(((base.sodium || 0) * factor).toFixed(1)),
+      fiber: parseFloat(((base.fiber || 0) * factor).toFixed(1))
     };
   };
 
@@ -122,6 +125,7 @@ export default function PhotoRecordModal({
       fat: finalNutrients.fat,
       carbs: finalNutrients.carbs,
       sodium: finalNutrients.sodium,
+      fiber: finalNutrients.fiber,
       photoUrl: imageSrc || '',
       memo: memo || (photoMode === 'nutritionLabel' ? `摂取割合: ${servingRatio}%` : `盛り付け量: ${portionMultiplier}人前`)
     };

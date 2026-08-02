@@ -4,7 +4,7 @@ import { nutritionDb } from '../db/nutritionDb';
  * 食事ログをCSVフォーマットテキストに変換
  */
 export function convertMealLogsToCSV(logs) {
-  const headers = ['ID', '日付', '区分', '食事名', 'カロリー(kcal)', 'タンパク質(g)', '脂質(g)', '炭水化物(g)', '登録日時'];
+  const headers = ['ID', '日付', '区分', '食事名', 'カロリー(kcal)', 'タンパク質(g)', '脂質(g)', '炭水化物(g)', '塩分(g)', '食物繊維(g)', '登録日時'];
   const rows = logs.map(log => [
     log.id || '',
     `"${(log.date || '').replace(/"/g, '""')}"`,
@@ -14,6 +14,8 @@ export function convertMealLogsToCSV(logs) {
     log.protein || 0,
     log.fat || 0,
     log.carbs || 0,
+    log.sodium || 0,
+    log.fiber || 0,
     `"${(log.createdAt || '').replace(/"/g, '""')}"`
   ]);
 
@@ -68,6 +70,8 @@ export async function importMealsFromCSV(file) {
               protein: Number(cols[5]) || 0,
               fat: Number(cols[6]) || 0,
               carbs: Number(cols[7]) || 0,
+              sodium: Number(cols[8]) || 0,
+              fiber: Number(cols[9]) || 0,
             });
             importedCount++;
           }

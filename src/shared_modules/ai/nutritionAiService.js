@@ -38,6 +38,7 @@ ${hintPrompt}
   "fat": 12.0,
   "carbs": 55.0,
   "sodium": 1.5,
+  "fiber": 4.5,
   "ingredients": ["食材1", "食材2"],
   "advice": "栄養ワンポイントアドバイス"
 }
@@ -191,7 +192,7 @@ export async function analyzeMealTextWithAI({
   }
 
   const prompt = `
-あなたは管理栄養士AIです。ユーザーが入力した食事の記述「${textInput}」から、食べた料理・食品の名称、推定カロリー(kcal)、タンパク質(g)、脂質(g)、炭水化物(g)、塩分相当量(g)、およびワンポイントアドバイスを算出し、以下のJSON形式で返却してください。
+あなたは管理栄養士AIです。ユーザーが入力した食事の記述「${textInput}」から、食べた料理・食品の名称、推定カロリー(kcal)、タンパク質(g)、脂質(g)、炭水化物(g)、塩分相当量(g)、食物繊維(g)、およびワンポイントアドバイスを算出し、以下のJSON形式で返却してください。
 
 【返却JSON形式】
 {
@@ -201,6 +202,7 @@ export async function analyzeMealTextWithAI({
   "fat": 18.5,
   "carbs": 82.0,
   "sodium": 2.2,
+  "fiber": 5.2,
   "ingredients": ["主要食材1", "主要食材2"],
   "advice": "栄養アドバイスメッセージ"
 }
@@ -295,27 +297,30 @@ export async function analyzeMealTextWithAI({
   let baseF = 10;
   let baseC = 45;
   let baseSalt = 1.0;
+  let baseFiber = 2.0;
 
   if (text.includes('ハンバーグ') || text.includes('肉') || text.includes('ステーキ') || text.includes('焼肉')) {
-    baseCal += 300; baseP += 20; baseF += 20; baseSalt += 1.0;
+    baseCal += 300; baseP += 20; baseF += 20; baseSalt += 1.0; baseFiber += 0.5;
   }
   if (text.includes('ラーメン') || text.includes('パスタ') || text.includes('麺') || text.includes('うどん')) {
-    baseCal += 250; baseC += 40; baseF += 8; baseSalt += 2.5;
+    baseCal += 250; baseC += 40; baseF += 8; baseSalt += 2.5; baseFiber += 1.5;
   }
   if (text.includes('サラダ') || text.includes('野菜')) {
-    baseCal += 50; baseC += 5;
+    baseCal += 50; baseC += 5; baseFiber += 3.5;
   }
   if (text.includes('大盛り') || text.includes('メガ')) {
     baseCal = Math.round(baseCal * 1.4);
     baseP = Math.round(baseP * 1.3);
     baseF = Math.round(baseF * 1.3);
     baseC = Math.round(baseC * 1.4);
+    baseFiber = Math.round(baseFiber * 1.3);
   }
   if (text.includes('小盛り') || text.includes('少なめ')) {
     baseCal = Math.round(baseCal * 0.7);
     baseP = Math.round(baseP * 0.7);
     baseF = Math.round(baseF * 0.7);
     baseC = Math.round(baseC * 0.7);
+    baseFiber = Math.round(baseFiber * 0.7);
   }
 
   const words = textInput.split(/[\s,、]+/);
@@ -326,6 +331,7 @@ export async function analyzeMealTextWithAI({
     fat: baseF,
     carbs: baseC,
     sodium: Number(baseSalt.toFixed(1)),
+    fiber: Number(baseFiber.toFixed(1)),
     ingredients: words,
     advice: 'オフライン推定結果です。AIプロキシ/APIキーを設定すると高精度な自動分析が可能です。'
   };

@@ -9,6 +9,7 @@ export default function EditMealModal({ mealLog, onClose, onSave }) {
   const [fat, setFat] = useState(mealLog.fat ?? 0);
   const [carbs, setCarbs] = useState(mealLog.carbs ?? 0);
   const [sodium, setSodium] = useState(mealLog.sodium ?? 0);
+  const [fiber, setFiber] = useState(mealLog.fiber ?? 0);
   const [memo, setMemo] = useState(mealLog.memo || '');
 
   const handleSubmit = (e) => {
@@ -23,6 +24,7 @@ export default function EditMealModal({ mealLog, onClose, onSave }) {
       fat: Number(fat) || 0,
       carbs: Number(carbs) || 0,
       sodium: Number(sodium) || 0,
+      fiber: Number(fiber) || 0,
       memo
     });
   };
@@ -133,15 +135,27 @@ export default function EditMealModal({ mealLog, onClose, onSave }) {
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5">食塩相当量 (g)</label>
-            <input
-              type="number"
-              step="any"
-              value={sodium}
-              onChange={(e) => setSodium(e.target.value)}
-              className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl px-4 py-2.5 text-slate-100 focus:outline-none focus:border-blue-500 text-sm"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">食塩相当量 (g)</label>
+              <input
+                type="number"
+                step="any"
+                value={sodium}
+                onChange={(e) => setSodium(e.target.value)}
+                className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl px-4 py-2.5 text-slate-100 focus:outline-none focus:border-blue-500 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">食物繊維 (g)</label>
+              <input
+                type="number"
+                step="any"
+                value={fiber}
+                onChange={(e) => setFiber(e.target.value)}
+                className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl px-4 py-2.5 text-slate-100 focus:outline-none focus:border-blue-500 text-sm"
+              />
+            </div>
           </div>
 
           {/* メモ */}

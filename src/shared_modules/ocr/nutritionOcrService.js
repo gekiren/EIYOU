@@ -47,13 +47,16 @@ export async function parseNutritionOcrText(ocrText) {
   const fatMatch = cleanText.match(/(?:脂質)[:：]?([0-9.]+)g?/i);
   // 炭水化物 (炭水化物, 糖質, g)
   const carbsMatch = cleanText.match(/(?:炭水化物|糖質)[:：]?([0-9.]+)g?/i);
+  // 食物繊維 (食物繊維, ファイバー, g)
+  const fiberMatch = cleanText.match(/(?:食物繊維|ファイバー)[:：]?([0-9.]+)g?/i);
 
   const calories = calMatch ? parseFloat(calMatch[1]) : 0;
   const protein = proteinMatch ? parseFloat(proteinMatch[1]) : 0;
   const fat = fatMatch ? parseFloat(fatMatch[1]) : 0;
   const carbs = carbsMatch ? parseFloat(carbsMatch[1]) : 0;
+  const fiber = fiberMatch ? parseFloat(fiberMatch[1]) : 0;
 
-  const hasNutrition = calories > 0 || protein > 0 || fat > 0 || carbs > 0;
+  const hasNutrition = calories > 0 || protein > 0 || fat > 0 || carbs > 0 || fiber > 0;
 
   return {
     isFood: hasNutrition,
@@ -63,6 +66,7 @@ export async function parseNutritionOcrText(ocrText) {
     fat,
     carbs,
     sodium: 0,
+    fiber,
     ingredients: [],
     advice: hasNutrition ? 'オンデバイスOCRにより成分表示ラベルから数値を読み取りました。' : '成分数値を自動判定できませんでした。手動で調整してください。'
   };

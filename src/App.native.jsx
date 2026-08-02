@@ -60,6 +60,7 @@ export default function NativeApp() {
   const [editFat, setEditFat] = useState('');
   const [editCarbs, setEditCarbs] = useState('');
   const [editSodium, setEditSodium] = useState('');
+  const [editFiber, setEditFiber] = useState('');
   const [editMemo, setEditMemo] = useState('');
 
   // 記録モード ('ocr' | 'dish' | 'manual')
@@ -88,6 +89,7 @@ export default function NativeApp() {
   const [fatInput, setFatInput] = useState('');
   const [carbsInput, setCarbsInput] = useState('');
   const [sodiumInput, setSodiumInput] = useState('');
+  const [fiberInput, setFiberInput] = useState('');
   const [mealType, setMealType] = useState('lunch');
 
   // 目標達成許容範囲のデフォルト値
@@ -97,6 +99,7 @@ export default function NativeApp() {
     fat: { min: -15, max: 15 },
     carbs: { min: -15, max: 15 },
     sodium: { min: -100, max: 0 },
+    fiber: { min: -15, max: 50 },
   };
 
   // 目標設定
@@ -106,6 +109,7 @@ export default function NativeApp() {
     fat: 60,
     carbs: 280,
     sodium: 7.0,
+    fiber: 20.0,
     tolerances: DEFAULT_TOLERANCES
   });
 
@@ -567,6 +571,7 @@ export default function NativeApp() {
         setFatInput(String(res.fat || 0));
         setCarbsInput(String(res.carbs || 0));
         setSodiumInput(String(res.sodium || 0));
+        setFiberInput(String(res.fiber || 0));
       } else {
         // デフォルト推定セット
         const defaultName = recordMode === 'ocr' ? '栄養成分表示食品' : '記録写真料理';
@@ -576,6 +581,7 @@ export default function NativeApp() {
         setFatInput('16.0');
         setCarbsInput('75.0');
         setSodiumInput('2.1');
+        setFiberInput('3.0');
       }
     } catch (err) {
       console.warn('AI Analysis Warning:', err);
@@ -587,6 +593,7 @@ export default function NativeApp() {
       setFatInput('14.0');
       setCarbsInput('65.0');
       setSodiumInput('1.8');
+      setFiberInput('2.5');
     } finally {
       setAnalyzing(false);
     }
@@ -599,9 +606,10 @@ export default function NativeApp() {
       protein: acc.protein + (Number(log.protein) || 0),
       fat: acc.fat + (Number(log.fat) || 0),
       carbs: acc.carbs + (Number(log.carbs) || 0),
-      sodium: acc.sodium + (Number(log.sodium) || 0)
+      sodium: acc.sodium + (Number(log.sodium) || 0),
+      fiber: acc.fiber + (Number(log.fiber) || 0)
     }),
-    { calories: 0, protein: 0, fat: 0, carbs: 0, sodium: 0 }
+    { calories: 0, protein: 0, fat: 0, carbs: 0, sodium: 0, fiber: 0 }
   );
 
   const handleSaveMeal = async (mealData) => {
@@ -635,6 +643,7 @@ export default function NativeApp() {
     setEditFat(String(log.fat ?? 0));
     setEditCarbs(String(log.carbs ?? 0));
     setEditSodium(String(log.sodium ?? 0));
+    setEditFiber(String(log.fiber ?? 0));
     setEditMemo(log.memo || '');
     setIsEditModalOpen(true);
   };
@@ -654,6 +663,7 @@ export default function NativeApp() {
       fat: Number(editFat) || 0,
       carbs: Number(editCarbs) || 0,
       sodium: Number(editSodium) || 0,
+      fiber: Number(editFiber) || 0,
       memo: editMemo
     });
 
@@ -729,6 +739,7 @@ export default function NativeApp() {
     const finalF = Number(((Number(fatInput) || 0) * mult).toFixed(1));
     const finalC = Number(((Number(carbsInput) || 0) * mult).toFixed(1));
     const finalNa = Number(((Number(sodiumInput) || 0) * mult).toFixed(1));
+    const finalFiber = Number(((Number(fiberInput) || 0) * mult).toFixed(1));
 
     // 選択された写真を永続ストレージ(FileSystem.documentDirectory)に保存
     let permanentPhotoPath = '';
@@ -744,6 +755,7 @@ export default function NativeApp() {
       fat: finalF,
       carbs: finalC,
       sodium: finalNa,
+      fiber: finalFiber,
       photoUrl: permanentPhotoPath || selectedImageUri || '',
       memo: recordMode === 'ocr' ? `【成分表示モード】摂取量: ${portionPercentage}%` : `【料理写真モード】量: ${portionMultiplier}倍`
     });
@@ -758,6 +770,7 @@ export default function NativeApp() {
     setFatInput('');
     setCarbsInput('');
     setSodiumInput('');
+    setFiberInput('');
     setPortionMultiplier(1.0);
     setPortionPercentage(100);
     setIsPhotoModalOpen(false);
@@ -822,6 +835,7 @@ export default function NativeApp() {
       const fat = Number(chatAnalyzedData.fat) || 0;
       const carbs = Number(chatAnalyzedData.carbs) || 0;
       const sodium = Number(chatAnalyzedData.sodium) || 0;
+      const fiber = Number(chatAnalyzedData.fiber) || 0;
       await handleSaveMeal({
         name: mealName,
         mealType: chatMealType,
@@ -830,6 +844,7 @@ export default function NativeApp() {
         fat,
         carbs,
         sodium,
+        fiber,
         memo: chatAnalyzedData.advice ? `AI解析: ${chatAnalyzedData.advice}` : 'AIチャット解析ログ'
       });
       setChatInput('');
@@ -920,8 +935,12 @@ export default function NativeApp() {
               <Text style={styles.pfcVal}>{totals.carbs.toFixed(1)} / {userGoals.carbs}g</Text>
             </View>
             <View style={styles.pfcItem}>
-              <Text style={styles.pfcLabel}>食塩相当量</Text>
+              <Text style={styles.pfcLabel}>塩分相当量</Text>
               <Text style={styles.pfcVal}>{totals.sodium.toFixed(1)} / {userGoals.sodium}g</Text>
+            </View>
+            <View style={styles.pfcItem}>
+              <Text style={styles.pfcLabel}>食物繊維</Text>
+              <Text style={styles.pfcVal}>{totals.fiber.toFixed(1)} / {userGoals.fiber || 20}g</Text>
             </View>
           </View>
         </View>
@@ -953,7 +972,7 @@ export default function NativeApp() {
                   <View style={styles.mealCardInfo}>
                     <Text style={styles.mealName}>{log.name}</Text>
                     <Text style={styles.mealDetail}>
-                      {log.calories} kcal | P:{log.protein}g F:{log.fat}g C:{log.carbs}g
+                      {log.calories} kcal | P:{log.protein}g F:{log.fat}g C:{log.carbs}g{log.fiber !== undefined && log.fiber !== null ? ` Fi:${log.fiber}g` : ''}
                     </Text>
                     {log.memo ? <Text style={styles.mealMemo}>{log.memo}</Text> : null}
                   </View>
@@ -990,6 +1009,7 @@ export default function NativeApp() {
                       fat: log.fat,
                       carbs: log.carbs,
                       sodium: log.sodium,
+                      fiber: log.fiber,
                       photoUrl: log.photoUrl,
                       memo: log.memo
                     })}
@@ -1415,6 +1435,27 @@ export default function NativeApp() {
                 </View>
               </View>
 
+              <View style={styles.rowInputs}>
+                <View style={{ flex: 1, marginRight: 5 }}>
+                  <Text style={styles.inputLabel}>塩分相当量 (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={sodiumInput}
+                    onChangeText={setSodiumInput}
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: 5 }}>
+                  <Text style={styles.inputLabel}>食物繊維 (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={fiberInput}
+                    onChangeText={setFiberInput}
+                  />
+                </View>
+              </View>
+
               <View style={styles.modalButtons}>
                 <TouchableOpacity
                   style={[styles.modalBtn, { backgroundColor: '#64748b' }]}
@@ -1531,6 +1572,7 @@ export default function NativeApp() {
                       { label: '脂質', value: chatAnalyzedData.fat, unit: 'g', color: '#ef4444' },
                       { label: '炭水化物', value: chatAnalyzedData.carbs, unit: 'g', color: '#8b5cf6' },
                       { label: '塩分', value: chatAnalyzedData.sodium, unit: 'g', color: '#64748b' },
+                      { label: '食物繊維', value: chatAnalyzedData.fiber, unit: 'g', color: '#10b981' },
                     ].map(item => (
                       <View key={item.label} style={{ backgroundColor: '#1e293b', borderRadius: 8, padding: 8, minWidth: '28%', alignItems: 'center', borderWidth: 1, borderColor: item.color + '44' }}>
                         <Text style={{ color: item.color, fontSize: 11, marginBottom: 2 }}>{item.label}</Text>
@@ -1864,6 +1906,28 @@ export default function NativeApp() {
                     </View>
                   )}
 
+                  {/* 塩分 & 食物繊維目標入力 */}
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.inputLabel, { color: '#94a3b8', fontSize: 12 }]}>塩分目標 (g)</Text>
+                      <TextInput
+                        style={styles.input}
+                        keyboardType="numeric"
+                        value={String(userGoals.sodium ?? 7.0)}
+                        onChangeText={(text) => setUserGoals(prev => ({ ...prev, sodium: Number(text) || 0 }))}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.inputLabel, { color: '#10b981', fontSize: 12 }]}>食物繊維目標 (g)</Text>
+                      <TextInput
+                        style={styles.input}
+                        keyboardType="numeric"
+                        value={String(userGoals.fiber ?? 20.0)}
+                        onChangeText={(text) => setUserGoals(prev => ({ ...prev, fiber: Number(text) || 0 }))}
+                      />
+                    </View>
+                  </View>
+
                   {/* サマリーカード */}
                   <View style={{ backgroundColor: 'rgba(30, 41, 59, 0.7)', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#334155', marginBottom: 12 }}>
                     <Text style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>📊 決定される目標値とPFC比率</Text>
@@ -1872,6 +1936,8 @@ export default function NativeApp() {
                       <Text style={{ color: '#60a5fa', fontSize: 13 }}>P: {userGoals.protein}g ({pRatio}%)</Text>
                       <Text style={{ color: '#f87171', fontSize: 13 }}>F: {userGoals.fat}g ({fRatio}%)</Text>
                       <Text style={{ color: '#fbbf24', fontSize: 13 }}>C: {userGoals.carbs}g ({cRatio}%)</Text>
+                      <Text style={{ color: '#94a3b8', fontSize: 13 }}>塩分: {userGoals.sodium}g</Text>
+                      <Text style={{ color: '#10b981', fontSize: 13 }}>食物繊維: {userGoals.fiber || 20}g</Text>
                     </View>
                     {(Number(pRatio) + Number(fRatio) + Number(cRatio) !== 100) && (goalMode === 'calorie_pfc' || goalMode === 'protein_pfc') && (
                       <Text style={{ fontSize: 11, color: '#f87171', marginTop: 6, backgroundColor: 'rgba(239, 68, 68, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
@@ -1895,6 +1961,7 @@ export default function NativeApp() {
                       { key: 'fat', label: '脂質' },
                       { key: 'carbs', label: '炭水化物' },
                       { key: 'sodium', label: '塩分' },
+                      { key: 'fiber', label: '食物繊維' },
                     ].map(item => {
                       const tol = userGoals.tolerances?.[item.key] || DEFAULT_TOLERANCES[item.key] || { min: -10, max: 10 };
                       return (
@@ -2174,13 +2241,26 @@ export default function NativeApp() {
                 </View>
               </View>
 
-              <Text style={styles.inputLabel}>食塩相当量 (g)</Text>
-              <TextInput
-                style={styles.input}
-                keyboardType="numeric"
-                value={editSodium}
-                onChangeText={setEditSodium}
-              />
+              <View style={styles.rowInputs}>
+                <View style={{ flex: 1, marginRight: 5 }}>
+                  <Text style={styles.inputLabel}>食塩相当量 (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={editSodium}
+                    onChangeText={setEditSodium}
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: 5 }}>
+                  <Text style={styles.inputLabel}>食物繊維 (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={editFiber}
+                    onChangeText={setEditFiber}
+                  />
+                </View>
+              </View>
 
               <Text style={styles.inputLabel}>メモ</Text>
               <TextInput
