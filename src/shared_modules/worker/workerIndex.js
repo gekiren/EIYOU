@@ -73,6 +73,58 @@ export default {
       }
     }
 
+    // テキスト（チャット）栄養解析エンドポイント
+    if (url.pathname === '/api/analyze-nutrition-text' && request.method === 'POST') {
+      try {
+        const body = await request.json();
+        const { textInput } = body;
+
+        if (!textInput || !textInput.trim()) {
+          return new Response(JSON.stringify({ error: 'textInputがありません。' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+
+        // Gemini 3.6 Flash でテキスト解析
+        const geminiKey = env.GEMINI_API_KEY;
+        if (geminiKey) {
+          try {
+            const result = await callGeminiText(textInput.trim(), geminiKey);
+            return new Response(JSON.stringify(result), {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+          } catch (geminiErr) {
+            console.error('Gemini text error in Worker, fallbacking to DeepSeek:', geminiErr);
+          }
+        }
+
+        // DeepSeek でテキスト解析（フォールバック）
+        const deepseekKey = env.DEEPSEEK_API_KEY;
+        if (deepseekKey) {
+          try {
+            const result = await callDeepSeekText(textInput.trim(), deepseekKey);
+            return new Response(JSON.stringify(result), {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+          } catch (deepseekErr) {
+            console.error('DeepSeek text error in Worker:', deepseekErr);
+          }
+        }
+
+        return new Response(JSON.stringify({ error: '利用可能なAI APIキーが環境変数に設定されていません。' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
     return new Response(JSON.stringify({ error: 'Not Found' }), {
       status: 404,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -159,6 +211,64 @@ async function callDeepSeekNutrition(base64Image, apiKey, ocrHintText = '') {
       }],
       response_format: { type: 'json_object' },
       temperature: 0.1
+    })
+  });
+
+  if (!response.ok) throw new Error(`DeepSeek API Http ${response.status}`);
+  const data = await response.json();
+  return JSON.parse(data.choices?.[0]?.message?.content);
+}
+
+async function callGeminiText(textInput, apiKey) {
+  const prompt = `
+あなたは管理栄養士AIです。ユーザーが入力した食事の記述「${textInput}」から、食べた料理・食品の名称、推定カロリー(kcal)、タンパク質(g)、脂質(g)、炭水化物(g)、塩分相当量(g)、およびワンポイントアドバイスを算出し、以下のJSON形式のみで返却してください。
+
+{
+  "mealName": "主たる料理名や構成食品",
+  "calories": 650,
+  "protein": 28.0,
+  "fat": 18.5,
+  "carbs": 82.0,
+  "sodium": 2.2,
+  "ingredients": ["主要食材1", "主要食材2"],
+  "advice": "栄養アドバイスメッセージ"
+}
+`;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+    })
+  });
+
+  if (!response.ok) throw new Error(`Gemini API Http ${response.status}`);
+  const data = await response.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('Gemini APIからのレスポンスが空です。');
+  return JSON.parse(text);
+}
+
+async function callDeepSeekText(textInput, apiKey) {
+  const prompt = `
+あなたは管理栄養士AIです。ユーザーが入力した食事の記述「${textInput}」から栄養データをJSON形式のみで返してください。
+{ "mealName": "料理名", "calories": 650, "protein": 28.0, "fat": 18.5, "carbs": 82.0, "sodium": 2.2, "ingredients": [], "advice": "アドバイス" }
+`;
+
+  const response = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: 'deepseek-v4-flash',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.2
     })
   });
 
