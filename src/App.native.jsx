@@ -1442,18 +1442,17 @@ export default function NativeApp() {
           }
         }}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' }}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-start', paddingTop: 45, paddingHorizontal: 12, paddingBottom: 20 }}>
           <View style={{
             backgroundColor: '#1e293b',
-            borderTopLeftRadius: 20,
-            borderTopRightRadius: 20,
+            borderRadius: 16,
             borderWidth: 1,
             borderColor: '#334155',
-            paddingHorizontal: 18,
+            paddingHorizontal: 16,
             paddingTop: 16,
-            paddingBottom: 24,
-            maxHeight: '90%',
-            minHeight: 260,
+            paddingBottom: 16,
+            maxHeight: '92%',
+            flex: 1,
           }}>
             <Text style={styles.modalTitle}>💬 チャット栄養AI記録</Text>
 
