@@ -29,7 +29,7 @@ export default {
     if (url.pathname === '/api/analyze-nutrition' && request.method === 'POST') {
       try {
         const body = await request.json();
-        const { image, ocrHintText } = body;
+        const { image, ocrHintText, preferredModel = 'gemini' } = body;
 
         if (!image) {
           return new Response(JSON.stringify({ error: '画像データ(image)がありません。' }), {
@@ -38,29 +38,46 @@ export default {
           });
         }
 
-        // Gemini 3.6 Flash API 呼出
         const geminiKey = env.GEMINI_API_KEY;
-        if (geminiKey) {
+        const deepseekKey = env.DEEPSEEK_API_KEY;
+
+        const tryGemini = async () => {
+          if (!geminiKey) return null;
           try {
-            const result = await callGeminiNutrition(image, geminiKey, ocrHintText);
-            return new Response(JSON.stringify(result), {
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-            });
+            return await callGeminiNutrition(image, geminiKey, ocrHintText);
           } catch (geminiErr) {
-            console.error('Gemini error in Worker, fallbacking to DeepSeek:', geminiErr);
+            console.error('Gemini error in Worker:', geminiErr);
+            return null;
           }
+        };
+
+        const tryDeepSeek = async () => {
+          if (!deepseekKey) return null;
+          try {
+            return await callDeepSeekNutrition(image, deepseekKey, ocrHintText);
+          } catch (deepseekErr) {
+            console.error('DeepSeek error in Worker:', deepseekErr);
+            return null;
+          }
+        };
+
+        let result = null;
+
+        if (preferredModel === 'deepseek') {
+          result = await tryDeepSeek();
+          if (!result) result = await tryGemini();
+        } else {
+          result = await tryGemini();
+          if (!result) result = await tryDeepSeek();
         }
 
-        // DeepSeek API 呼出（フォールバック）
-        const deepseekKey = env.DEEPSEEK_API_KEY;
-        if (deepseekKey) {
-          const result = await callDeepSeekNutrition(image, deepseekKey, ocrHintText);
+        if (result) {
           return new Response(JSON.stringify(result), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           });
         }
 
-        return new Response(JSON.stringify({ error: '利用可能なAI APIキーが環境変数に設定されていません。' }), {
+        return new Response(JSON.stringify({ error: '利用可能なAI APIキーが設定されていないか、すべてのAI解析に失敗しました。' }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
@@ -77,7 +94,7 @@ export default {
     if (url.pathname === '/api/analyze-nutrition-text' && request.method === 'POST') {
       try {
         const body = await request.json();
-        const { textInput } = body;
+        const { textInput, preferredModel = 'gemini' } = body;
 
         if (!textInput || !textInput.trim()) {
           return new Response(JSON.stringify({ error: 'textInputがありません。' }), {
@@ -86,33 +103,46 @@ export default {
           });
         }
 
-        // Gemini 3.6 Flash でテキスト解析
         const geminiKey = env.GEMINI_API_KEY;
-        if (geminiKey) {
-          try {
-            const result = await callGeminiText(textInput.trim(), geminiKey);
-            return new Response(JSON.stringify(result), {
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-            });
-          } catch (geminiErr) {
-            console.error('Gemini text error in Worker, fallbacking to DeepSeek:', geminiErr);
-          }
-        }
-
-        // DeepSeek でテキスト解析（フォールバック）
         const deepseekKey = env.DEEPSEEK_API_KEY;
-        if (deepseekKey) {
+
+        const tryGeminiText = async () => {
+          if (!geminiKey) return null;
           try {
-            const result = await callDeepSeekText(textInput.trim(), deepseekKey);
-            return new Response(JSON.stringify(result), {
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-            });
+            return await callGeminiText(textInput.trim(), geminiKey);
+          } catch (geminiErr) {
+            console.error('Gemini text error in Worker:', geminiErr);
+            return null;
+          }
+        };
+
+        const tryDeepSeekText = async () => {
+          if (!deepseekKey) return null;
+          try {
+            return await callDeepSeekText(textInput.trim(), deepseekKey);
           } catch (deepseekErr) {
             console.error('DeepSeek text error in Worker:', deepseekErr);
+            return null;
           }
+        };
+
+        let result = null;
+
+        if (preferredModel === 'deepseek') {
+          result = await tryDeepSeekText();
+          if (!result) result = await tryGeminiText();
+        } else {
+          result = await tryGeminiText();
+          if (!result) result = await tryDeepSeekText();
         }
 
-        return new Response(JSON.stringify({ error: '利用可能なAI APIキーが環境変数に設定されていません。' }), {
+        if (result) {
+          return new Response(JSON.stringify(result), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+
+        return new Response(JSON.stringify({ error: '利用可能なAI APIキーが設定されていないか、すべてのAI解析に失敗しました。' }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });

@@ -76,13 +76,13 @@ ${hintPrompt}
 /**
  * Cloudflare Worker プロキシ経由のリクエスト処理
  */
-export async function analyzeNutritionWithWorkerProxy(base64Image, proxyUrl, ocrHintText = '') {
+export async function analyzeNutritionWithWorkerProxy(base64Image, proxyUrl, ocrHintText = '', preferredModel = 'gemini') {
   const cleanUrl = proxyUrl.replace(/\/$/, '') + '/api/analyze-nutrition';
 
   const response = await fetch(cleanUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image: base64Image, ocrHintText })
+    body: JSON.stringify({ image: base64Image, ocrHintText, preferredModel })
   });
 
   if (!response.ok) {
@@ -96,7 +96,7 @@ export async function analyzeNutritionWithWorkerProxy(base64Image, proxyUrl, ocr
 /**
  * 統合栄養解析パイプライン
  * 1. オンデバイスOCRで成分表記テキストの事前取得
- * 2. Workerプロキシ / Gemini 3.6 Flash / DeepSeek V4 相互フォールバックAI解析
+ * 2. Workerプロキシ / Gemini 3.6 Flash / DeepSeek V4 相互フォールバックAI解析 (ユーザー指定優先順)
  * 3. AI非接続時はローカルOCRルールベース推定
  */
 export async function analyzeMealPhoto({
@@ -104,6 +104,7 @@ export async function analyzeMealPhoto({
   geminiApiKey,
   deepSeekApiKey,
   workerProxyUrl = SECURE_WORKER_PROXY_URL,
+  preferredModel = 'gemini',
   onProgress
 }) {
   let ocrResult = { text: '' };
@@ -119,35 +120,53 @@ export async function analyzeMealPhoto({
   // Step 2: Cloudflare Worker プロキシ利用
   if (workerProxyUrl) {
     try {
-      if (onProgress) onProgress('AIサーバー経由で食事・PFCバランスを解析中...');
-      return await analyzeNutritionWithWorkerProxy(base64Image, workerProxyUrl, ocrResult.text);
+      if (onProgress) onProgress(`AIサーバー経由で食事・PFCバランスを解析中 (${preferredModel === 'deepseek' ? 'DeepSeek優先' : 'Gemini優先'})...`);
+      return await analyzeNutritionWithWorkerProxy(base64Image, workerProxyUrl, ocrResult.text, preferredModel);
     } catch (proxyErr) {
       console.warn('Worker proxy failed, switching to direct API keys if present:', proxyErr);
     }
   }
 
-  // Gemini 3.6 Flash 直打ち
-  if (geminiApiKey) {
-    try {
-      if (onProgress) onProgress('Gemini 3.6 Flash で食事解析中...');
-      return await analyzeNutritionWithGemini(base64Image, geminiApiKey, 'gemini-3.6-flash', ocrResult.text);
-    } catch (geminiErr) {
-      console.warn('Gemini API failed, retrying with 2.5-flash:', geminiErr);
+  // 直打ちフォールバック (DeepSeek優先)
+  if (preferredModel === 'deepseek') {
+    if (deepSeekApiKey) {
       try {
-        return await analyzeNutritionWithGemini(base64Image, geminiApiKey, 'gemini-2.5-flash', ocrResult.text);
-      } catch (err2) {
-        console.warn('Gemini fallback failed:', err2);
+        if (onProgress) onProgress('DeepSeek V4 で食事解析中...');
+        return await analyzeNutritionWithDeepSeek(base64Image, deepSeekApiKey, 'deepseek-v4-flash', ocrResult.text);
+      } catch (deepSeekErr) {
+        console.warn('DeepSeek API failed, fallbacking to Gemini:', deepSeekErr);
       }
     }
-  }
-
-  // DeepSeek V4 直打ち
-  if (deepSeekApiKey) {
-    try {
-      if (onProgress) onProgress('DeepSeek V4 で食事解析中...');
-      return await analyzeNutritionWithDeepSeek(base64Image, deepSeekApiKey, 'deepseek-v4-flash', ocrResult.text);
-    } catch (deepSeekErr) {
-      console.warn('DeepSeek API failed:', deepSeekErr);
+    if (geminiApiKey) {
+      try {
+        if (onProgress) onProgress('Gemini 3.6 Flash で食事解析中...');
+        return await analyzeNutritionWithGemini(base64Image, geminiApiKey, 'gemini-3.6-flash', ocrResult.text);
+      } catch (geminiErr) {
+        console.warn('Gemini API failed:', geminiErr);
+      }
+    }
+  } else {
+    // 直打ちフォールバック (Gemini優先: デフォルト)
+    if (geminiApiKey) {
+      try {
+        if (onProgress) onProgress('Gemini 3.6 Flash で食事解析中...');
+        return await analyzeNutritionWithGemini(base64Image, geminiApiKey, 'gemini-3.6-flash', ocrResult.text);
+      } catch (geminiErr) {
+        console.warn('Gemini API failed, retrying with 2.5-flash:', geminiErr);
+        try {
+          return await analyzeNutritionWithGemini(base64Image, geminiApiKey, 'gemini-2.5-flash', ocrResult.text);
+        } catch (err2) {
+          console.warn('Gemini fallback failed:', err2);
+        }
+      }
+    }
+    if (deepSeekApiKey) {
+      try {
+        if (onProgress) onProgress('DeepSeek V4 で食事解析中...');
+        return await analyzeNutritionWithDeepSeek(base64Image, deepSeekApiKey, 'deepseek-v4-flash', ocrResult.text);
+      } catch (deepSeekErr) {
+        console.warn('DeepSeek API failed:', deepSeekErr);
+      }
     }
   }
 
@@ -164,7 +183,8 @@ export async function analyzeMealTextWithAI({
   textInput,
   geminiApiKey,
   deepSeekApiKey,
-  workerProxyUrl = SECURE_WORKER_PROXY_URL
+  workerProxyUrl = SECURE_WORKER_PROXY_URL,
+  preferredModel = 'gemini'
 }) {
   if (!textInput || !textInput.trim()) {
     throw new Error('入力テキストが空です。');
@@ -193,7 +213,7 @@ export async function analyzeMealTextWithAI({
       const response = await fetch(cleanUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ textInput })
+        body: JSON.stringify({ textInput, preferredModel })
       });
       if (response.ok) {
         const data = await response.json();
@@ -204,8 +224,8 @@ export async function analyzeMealTextWithAI({
     }
   }
 
-  // 2. Gemini 3.6 Flash 直接呼出 (フォールバック 2.5 Flash)
-  if (geminiApiKey) {
+  const callGeminiDirect = async () => {
+    if (!geminiApiKey) return null;
     for (const model of ['gemini-3.6-flash', 'gemini-2.5-flash']) {
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
@@ -226,10 +246,11 @@ export async function analyzeMealTextWithAI({
         console.warn(`Gemini (${model}) text analysis error:`, e);
       }
     }
-  }
+    return null;
+  };
 
-  // 3. DeepSeek 直接呼出
-  if (deepSeekApiKey) {
+  const callDeepSeekDirect = async () => {
+    if (!deepSeekApiKey) return null;
     try {
       const response = await fetch('https://api.deepseek.com/chat/completions', {
         method: 'POST',
@@ -251,6 +272,20 @@ export async function analyzeMealTextWithAI({
     } catch (e) {
       console.warn('DeepSeek text analysis error:', e);
     }
+    return null;
+  };
+
+  // 2 & 3. 優先モデルに応じた直打ちフォールバック順
+  if (preferredModel === 'deepseek') {
+    const dsRes = await callDeepSeekDirect();
+    if (dsRes) return dsRes;
+    const gemRes = await callGeminiDirect();
+    if (gemRes) return gemRes;
+  } else {
+    const gemRes = await callGeminiDirect();
+    if (gemRes) return gemRes;
+    const dsRes = await callDeepSeekDirect();
+    if (dsRes) return dsRes;
   }
 
   // 4. オフライン時／AI未接続時の簡易キーワード推定フォールバック

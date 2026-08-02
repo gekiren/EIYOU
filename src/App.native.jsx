@@ -133,6 +133,9 @@ export default function NativeApp() {
     safeStorage.setItem('eiyou_user_goals', JSON.stringify(updated));
   };
 
+  // AIモデル選択ステート ('gemini' | 'deepseek')
+  const [preferredAiModel, setPreferredAiModel] = useState('gemini');
+
   // Obsidian 連携ステート
   const [obsidianEnabled, setObsidianEnabled] = useState(false);
   const [obsidianVaultUri, setObsidianVaultUri] = useState('');
@@ -194,6 +197,11 @@ export default function NativeApp() {
     } else {
       updateRatiosFromGoals(userGoals);
     }
+    const savedModel = await safeStorage.getItem('eiyou_preferred_ai_model', 'gemini');
+    if (savedModel) {
+      setPreferredAiModel(savedModel);
+    }
+
     const cfg = await obsidianSyncService.getConfig();
     setObsidianEnabled(cfg.enabled || false);
     setObsidianVaultUri(cfg.vaultUri || '');
@@ -546,6 +554,7 @@ export default function NativeApp() {
       const res = await analyzeMealPhoto({
         base64Image: imgBase64,
         workerProxyUrl: SECURE_WORKER_PROXY_URL,
+        preferredModel: preferredAiModel,
         onProgress: (msg) => setProgressMsg(msg)
       });
 
@@ -655,6 +664,7 @@ export default function NativeApp() {
 
   const handleSaveSettings = async () => {
     await safeStorage.setItem('eiyou_user_goals', JSON.stringify(userGoals));
+    await safeStorage.setItem('eiyou_preferred_ai_model', preferredAiModel);
     await obsidianSyncService.saveConfig({
       enabled: obsidianEnabled,
       vaultUri: obsidianVaultUri,
@@ -763,7 +773,8 @@ export default function NativeApp() {
     try {
       const parsedData = await analyzeMealTextWithAI({
         textInput: chatInput.trim(),
-        workerProxyUrl: SECURE_WORKER_PROXY_URL
+        workerProxyUrl: SECURE_WORKER_PROXY_URL,
+        preferredModel: preferredAiModel
       });
       setChatAnalyzedData(parsedData);
       setChatMessages(prev => [...prev, { sender: 'ai', text: `「${parsedData.mealName}」として解析しました。` }]);
@@ -787,7 +798,8 @@ export default function NativeApp() {
     try {
       const parsedData = await analyzeMealTextWithAI({
         textInput: combinedInput,
-        workerProxyUrl: SECURE_WORKER_PROXY_URL
+        workerProxyUrl: SECURE_WORKER_PROXY_URL,
+        preferredModel: preferredAiModel
       });
       setChatAnalyzedData(parsedData);
       setChatMessages(prev => [...prev, { sender: 'ai', text: `内容を更新しました。「${parsedData.mealName}」(${parsedData.calories}kcal)` }]);
@@ -2001,12 +2013,59 @@ export default function NativeApp() {
 
             {/* 3. データ・その他タブ */}
             {settingsTab === 'data' && (
-              <View>
-                <Text style={[styles.inputLabel, { color: '#34d399', fontWeight: 'bold', fontSize: 16, marginBottom: 12 }]}>
-                  📁 データ & システム設定
-                </Text>
+              <View style={{ gap: 16 }}>
+                {/* 🤖 デフォルトAIモデル設定 */}
+                <View style={{ padding: 12, borderRadius: 10, backgroundColor: 'rgba(30, 41, 59, 0.6)', borderWidth: 1, borderColor: '#334155' }}>
+                  <Text style={[styles.inputLabel, { color: '#38bdf8', fontWeight: 'bold', fontSize: 16, marginBottom: 6 }]}>
+                    🤖 デフォルトAIモデル設定
+                  </Text>
+                  <Text style={{ color: '#94a3b8', fontSize: 12, marginBottom: 12 }}>
+                    食事写真やチャット解析で優先使用するAIエンジンを選択します。
+                  </Text>
 
-                <View style={{ marginTop: 12, marginBottom: 8 }}>
+                  {[
+                    {
+                      key: 'gemini',
+                      title: 'Gemini 3.6 Flash (推奨)',
+                      desc: '高速な画像認識・マルチモーダル対応の標準モデル'
+                    },
+                    {
+                      key: 'deepseek',
+                      title: 'DeepSeek V4 Flash',
+                      desc: 'テキスト解析・構造化推論に優れた高精度モデル'
+                    }
+                  ].map(model => (
+                    <TouchableOpacity
+                      key={model.key}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        padding: 10,
+                        marginBottom: 8,
+                        borderRadius: 8,
+                        backgroundColor: preferredAiModel === model.key ? 'rgba(56, 189, 248, 0.15)' : '#0f172a',
+                        borderWidth: 1,
+                        borderColor: preferredAiModel === model.key ? '#38bdf8' : '#334155'
+                      }}
+                      onPress={() => setPreferredAiModel(model.key)}
+                    >
+                      <Text style={{ color: preferredAiModel === model.key ? '#38bdf8' : '#94a3b8', marginRight: 10, fontSize: 18 }}>
+                        {preferredAiModel === model.key ? '🔘' : '⚪'}
+                      </Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#f8fafc', fontWeight: 'bold', fontSize: 14 }}>{model.title}</Text>
+                        <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>{model.desc}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* 📁 システム設定 */}
+                <View style={{ padding: 12, borderRadius: 10, backgroundColor: 'rgba(30, 41, 59, 0.6)', borderWidth: 1, borderColor: '#334155' }}>
+                  <Text style={[styles.inputLabel, { color: '#34d399', fontWeight: 'bold', fontSize: 16, marginBottom: 12 }]}>
+                    📁 データ & システム設定
+                  </Text>
+
                   <TouchableOpacity
                     style={[styles.modalBtn, { backgroundColor: '#8b5cf6', marginLeft: 0, paddingVertical: 12, alignItems: 'center' }]}
                     onPress={handleCheckOTAUpdate}
