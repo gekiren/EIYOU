@@ -76,6 +76,9 @@ export default function NativeApp() {
 
   // 手動 / 入力項目
   const [chatInput, setChatInput] = useState('');
+  const [chatAnalyzing, setChatAnalyzing] = useState(false); // AI解析中フラグ
+  const [chatAnalyzedData, setChatAnalyzedData] = useState(null); // AI解析結果プレビュー
+  const [chatMealType, setChatMealType] = useState('lunch'); // 食事タイプ選択
   const [mealNameInput, setMealNameInput] = useState('');
   const [caloriesInput, setCaloriesInput] = useState('');
   const [proteinInput, setProteinInput] = useState('');
@@ -747,43 +750,54 @@ export default function NativeApp() {
     setIsPhotoModalOpen(false);
   };
 
-  // チャット栄養解析記録追加
-  const handleAddChatMeal = async () => {
-    if (!chatInput.trim()) {
-      Alert.alert('入力エラー', '食べたものをメッセージで入力してください。');
-      return;
-    }
-
-    setLoading(true);
+  // チャット: AI解析フェーズ（解析結果をプレビュー表示）
+  const handleAnalyzeChatMeal = async () => {
+    if (!chatInput.trim() || chatAnalyzing) return;
+    setChatAnalyzing(true);
+    setChatAnalyzedData(null);
     try {
       const parsedData = await analyzeMealTextWithAI({
         textInput: chatInput.trim(),
         workerProxyUrl: SECURE_WORKER_PROXY_URL
       });
+      setChatAnalyzedData(parsedData);
+    } catch (err) {
+      console.error('Chat analysis error:', err);
+      Alert.alert('解析エラー', 'AI解析に失敗しました: ' + (err.message || ''));
+    } finally {
+      setChatAnalyzing(false);
+    }
+  };
 
-      const mealName = parsedData.mealName || chatInput.trim();
-      const calories = Number(parsedData.calories) || 0;
-      const protein = Number(parsedData.protein) || 0;
-      const fat = Number(parsedData.fat) || 0;
-      const carbs = Number(parsedData.carbs) || 0;
-      const sodium = Number(parsedData.sodium) || 0;
-
+  // チャット: 確認後に保存フェーズ
+  const handleConfirmChatMeal = async () => {
+    if (!chatAnalyzedData || loading) return;
+    setLoading(true);
+    try {
+      const mealName = chatAnalyzedData.mealName || chatInput.trim();
+      const calories = Number(chatAnalyzedData.calories) || 0;
+      const protein = Number(chatAnalyzedData.protein) || 0;
+      const fat = Number(chatAnalyzedData.fat) || 0;
+      const carbs = Number(chatAnalyzedData.carbs) || 0;
+      const sodium = Number(chatAnalyzedData.sodium) || 0;
       await handleSaveMeal({
         name: mealName,
-        mealType: 'snack',
+        mealType: chatMealType,
         calories,
         protein,
         fat,
         carbs,
         sodium,
-        memo: parsedData.advice ? `AI解析: ${parsedData.advice}` : 'AIチャット解析ログ'
+        memo: chatAnalyzedData.advice ? `AI解析: ${chatAnalyzedData.advice}` : 'AIチャット解析ログ'
       });
       setChatInput('');
+      setChatAnalyzedData(null);
+      setChatMealType('lunch');
       setIsChatModalOpen(false);
-      Alert.alert('AI記録完了', `「${mealName}」(${calories}kcal) の栄養ログを保存しました`);
+      Alert.alert('AI記録完了', `「${mealName}」(${calories}kcal) を保存しました`);
     } catch (err) {
-      console.error('Chat analysis error:', err);
-      Alert.alert('解析エラー', 'AI解析通信に失敗しました: ' + (err.message || ''));
+      console.error('Chat save error:', err);
+      Alert.alert('保存エラー', err.message || '');
     } finally {
       setLoading(false);
     }
@@ -1383,33 +1397,144 @@ export default function NativeApp() {
       </Modal>
 
       {/* チャット記録モーダル */}
-      <Modal visible={isChatModalOpen} animationType="slide" transparent>
+      <Modal
+        visible={isChatModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          if (!chatAnalyzing && !loading) {
+            setChatInput('');
+            setChatAnalyzedData(null);
+            setChatMealType('lunch');
+            setIsChatModalOpen(false);
+          }
+        }}
+      >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
             <Text style={styles.modalTitle}>💬 チャット栄養AI記録</Text>
-            <Text style={styles.modalSub}>食べたものを入力するとAIが栄養価を推定・記録します</Text>
-            <TextInput
-              style={[styles.input, { height: 80 }]}
-              placeholder="例: 朝食にバナナ1本と牛乳200ml"
-              placeholderTextColor="#94a3b8"
-              multiline
-              value={chatInput}
-              onChangeText={setChatInput}
-            />
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: '#64748b' }]}
-                onPress={() => setIsChatModalOpen(false)}
-              >
-                <Text style={styles.modalBtnText}>キャンセル</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: '#8b5cf6' }]}
-                onPress={handleAddChatMeal}
-              >
-                <Text style={styles.modalBtnText}>AIで自動解析</Text>
-              </TouchableOpacity>
-            </View>
+
+            {/* フェーズ1: テキスト入力 */}
+            {!chatAnalyzedData && (
+              <>
+                <Text style={styles.modalSub}>食べたものを自由に入力してください</Text>
+                <TextInput
+                  style={[styles.input, { height: 80 }]}
+                  placeholder="例: 朝食にバナナ1本と牛乳200ml、ゆで卵1個"
+                  placeholderTextColor="#94a3b8"
+                  multiline
+                  value={chatInput}
+                  onChangeText={setChatInput}
+                  editable={!chatAnalyzing}
+                />
+                {chatAnalyzing && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                    <ActivityIndicator size="small" color="#8b5cf6" />
+                    <Text style={{ color: '#94a3b8', fontSize: 13 }}>AIが栄養価を解析中...</Text>
+                  </View>
+                )}
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, { backgroundColor: '#64748b' }]}
+                    onPress={() => {
+                      setChatInput('');
+                      setChatAnalyzedData(null);
+                      setChatMealType('lunch');
+                      setIsChatModalOpen(false);
+                    }}
+                    disabled={chatAnalyzing}
+                  >
+                    <Text style={styles.modalBtnText}>キャンセル</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, { backgroundColor: chatAnalyzing || !chatInput.trim() ? '#4a3f6b' : '#8b5cf6' }]}
+                    onPress={handleAnalyzeChatMeal}
+                    disabled={chatAnalyzing || !chatInput.trim()}
+                  >
+                    <Text style={styles.modalBtnText}>{chatAnalyzing ? '解析中...' : '🤖 AIで解析'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {/* フェーズ2: 解析結果確認 */}
+            {chatAnalyzedData && (
+              <>
+                <Text style={[styles.modalSub, { color: '#34d399' }]}>✅ AI解析完了 — 内容を確認してください</Text>
+
+                {/* 食事名 */}
+                <View style={{ backgroundColor: '#0f172a', borderRadius: 10, padding: 12, marginTop: 8, marginBottom: 8, borderWidth: 1, borderColor: '#334155' }}>
+                  <Text style={{ color: '#e2e8f0', fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>🍽 {chatAnalyzedData.mealName}</Text>
+
+                  {/* 栄養価グリッド */}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                    {[
+                      { label: 'カロリー', value: chatAnalyzedData.calories, unit: 'kcal', color: '#f59e0b' },
+                      { label: 'タンパク質', value: chatAnalyzedData.protein, unit: 'g', color: '#3b82f6' },
+                      { label: '脂質', value: chatAnalyzedData.fat, unit: 'g', color: '#ef4444' },
+                      { label: '炭水化物', value: chatAnalyzedData.carbs, unit: 'g', color: '#8b5cf6' },
+                      { label: '塩分', value: chatAnalyzedData.sodium, unit: 'g', color: '#64748b' },
+                    ].map(item => (
+                      <View key={item.label} style={{ backgroundColor: '#1e293b', borderRadius: 8, padding: 8, minWidth: '28%', alignItems: 'center', borderWidth: 1, borderColor: item.color + '44' }}>
+                        <Text style={{ color: item.color, fontSize: 11, marginBottom: 2 }}>{item.label}</Text>
+                        <Text style={{ color: '#f1f5f9', fontSize: 15, fontWeight: 'bold' }}>{item.value}</Text>
+                        <Text style={{ color: '#64748b', fontSize: 10 }}>{item.unit}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  {/* アドバイス */}
+                  {chatAnalyzedData.advice && (
+                    <Text style={{ color: '#94a3b8', fontSize: 12, fontStyle: 'italic' }}>💡 {chatAnalyzedData.advice}</Text>
+                  )}
+                </View>
+
+                {/* 食事タイプ選択 */}
+                <Text style={[styles.inputLabel, { marginBottom: 4 }]}>食事の種類</Text>
+                <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
+                  {[
+                    { key: 'breakfast', label: '🌅 朝食' },
+                    { key: 'lunch', label: '☀️ 昼食' },
+                    { key: 'dinner', label: '🌙 夕食' },
+                    { key: 'snack', label: '🍪 間食' },
+                  ].map(type => (
+                    <TouchableOpacity
+                      key={type.key}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 8,
+                        borderRadius: 8,
+                        alignItems: 'center',
+                        backgroundColor: chatMealType === type.key ? '#8b5cf6' : '#1e293b',
+                        borderWidth: 1,
+                        borderColor: chatMealType === type.key ? '#8b5cf6' : '#334155',
+                      }}
+                      onPress={() => setChatMealType(type.key)}
+                    >
+                      <Text style={{ color: chatMealType === type.key ? '#fff' : '#94a3b8', fontSize: 11, fontWeight: 'bold' }}>{type.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, { backgroundColor: '#334155' }]}
+                    onPress={() => setChatAnalyzedData(null)}
+                    disabled={loading}
+                  >
+                    <Text style={styles.modalBtnText}>↩ やり直す</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, { backgroundColor: loading ? '#1a6b4a' : '#10b981' }]}
+                    onPress={handleConfirmChatMeal}
+                    disabled={loading}
+                  >
+                    <Text style={styles.modalBtnText}>{loading ? '保存中...' : '✅ 保存する'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
           </View>
         </View>
       </Modal>
