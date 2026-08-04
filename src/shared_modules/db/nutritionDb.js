@@ -206,10 +206,21 @@ class HybridNutritionDb {
    */
   async getAllMealLogs() {
     if (this.isWeb && this.dexieDb) {
-      return await this.dexieDb.mealLogs.orderBy('createdAt').reverse().toArray();
+      try {
+        return await this.dexieDb.mealLogs.orderBy('createdAt').reverse().toArray();
+      } catch (e) {
+        console.warn('Dexie getAllMealLogs error:', e);
+      }
     }
     const logs = await this._getNativeLogs();
-    return logs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    if (!Array.isArray(logs)) return [];
+    return logs.sort((a, b) => {
+      const timeA = a && a.createdAt ? new Date(a.createdAt).getTime() : (a && a.id ? Number(a.id) : 0);
+      const timeB = b && b.createdAt ? new Date(b.createdAt).getTime() : (b && b.id ? Number(b.id) : 0);
+      const valA = isNaN(timeA) ? 0 : timeA;
+      const valB = isNaN(timeB) ? 0 : timeB;
+      return valB - valA;
+    });
   }
 }
 

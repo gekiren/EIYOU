@@ -8,11 +8,11 @@ import {
   ScrollView,
   TextInput
 } from 'react-native';
-import LazyImage from './LazyImage';
+import LazyImage from './LazyImage.native.jsx';
 
 export default function HistorySelectModal({
-  visible,
-  onClose,
+  visible = false,
+  onClose = () => {},
   allHistoryLogs = [],
   favorites = [],
   historyTargetMealType = 'lunch',
@@ -23,8 +23,6 @@ export default function HistorySelectModal({
   const [activeTab, setActiveTab] = useState('favorites'); // 'favorites' | 'recent' | 'frequent'
   const [searchQuery, setSearchQuery] = useState('');
   const [multiplier, setMultiplier] = useState(1.0); // 0.5x, 1.0x, 1.5x, 2.0x などの倍数選択
-
-  if (!visible) return null;
 
   // タブ・検索フィルタリング（完全保護）
   const displayItems = useMemo(() => {
@@ -59,15 +57,20 @@ export default function HistorySelectModal({
               count: 0
             });
           }
-          map.get(key).count += 1;
+          const target = map.get(key);
+          target.count = (Number(target.count) || 0) + 1;
         });
 
-        items = Array.from(map.values()).sort((a, b) => b.count - a.count);
+        items = Array.from(map.values()).sort((a, b) => {
+          const countA = Number(a.count) || 0;
+          const countB = Number(b.count) || 0;
+          return countB - countA;
+        });
       }
 
       if (searchQuery.trim()) {
         const q = searchQuery.trim().toLowerCase();
-        items = items.filter(i => i && (i.name || '').toLowerCase().includes(q));
+        items = items.filter(i => i && String(i.name || '').toLowerCase().includes(q));
       }
 
       // レンダリング負荷対策：表示件数を上位60件に安全スライス
@@ -81,7 +84,12 @@ export default function HistorySelectModal({
   const calcVal = (val, mult) => (Math.round((Number(val) || 0) * mult * 10) / 10);
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal
+      visible={Boolean(visible)}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+    >
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           {/* ヘッダー */}
@@ -190,7 +198,7 @@ export default function HistorySelectModal({
                       </View>
 
                       {/* 遅延ロード写真表示 */}
-                      {Boolean(item.photoUrl) && LazyImage && (
+                      {Boolean(item.photoUrl) && typeof LazyImage === 'function' && (
                         <LazyImage
                           uri={item.photoUrl}
                           onPressFullPreview={onPreviewPhoto}
