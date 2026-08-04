@@ -347,8 +347,16 @@ export default function NativeApp() {
   };
 
   const handleToggleFavorite = async (mealItem) => {
-    await nutritionDb.toggleFavorite(mealItem);
-    await loadFavorites();
+    const targetItem = {
+      ...mealItem,
+      mealType: mealItem?.mealType || historyTargetMealType || 'lunch'
+    };
+    await nutritionDb.toggleFavorite(targetItem);
+    const [logs, favs] = await Promise.all([
+      nutritionDb.getAllMealLogs(),
+      loadFavorites()
+    ]);
+    setAllHistoryLogs(logs || []);
   };
 
   const handleOpenHistoryModal = async () => {
@@ -472,7 +480,7 @@ export default function NativeApp() {
     }
   };
 
-  // カメラ撮影処理 (Modal非同期描画ロック防止 ＆ ハイブリッド自動フォールバック付き)
+  // カメラ撮影処理 (黒画面フリーズ防止・安全安定撮影構成)
   const handleTakePhoto = async () => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -481,27 +489,21 @@ export default function NativeApp() {
         return;
       }
 
+      // 前回撮影した画像ステートと解析結果をクリアしてメモリを解放
+      setSelectedImageUri(null);
+      setBase64Image(null);
+      setAiAnalysisResult(null);
+
       // AndroidのModal描画ロック防止のため、カメラ起動前にモーダルを一時隠す
       setIsPhotoModalOpen(false);
       await new Promise((resolve) => setTimeout(resolve, 150));
 
-      let result;
-      try {
-        // まずクロップあり (allowsEditing: true) を試行
-        result = await ImagePicker.launchCameraAsync({
-          mediaTypes: ['images'],
-          allowsEditing: true,
-          quality: 0.8
-        });
-      } catch (cropErr) {
-        console.warn('Native Crop Intent failed, falling back to non-crop camera mode:', cropErr);
-        // 端末のクロップIntentが失敗した場合はクロップなし (allowsEditing: false) で安全撮影
-        result = await ImagePicker.launchCameraAsync({
-          mediaTypes: ['images'],
-          allowsEditing: false,
-          quality: 0.8
-        });
-      }
+      // Android Crop Intentの黒画面フリーズを回避するため allowsEditing: false で安定直接撮影
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.8
+      });
 
       // 撮影完了・復帰後にモーダルを再表示
       setIsPhotoModalOpen(true);
@@ -525,6 +527,11 @@ export default function NativeApp() {
         Alert.alert('権限エラー', '写真を選択するにはライブラリへのアクセス許可が必要です。');
         return;
       }
+
+      // 前回撮影した画像ステートと解析結果をクリア
+      setSelectedImageUri(null);
+      setBase64Image(null);
+      setAiAnalysisResult(null);
 
       // Modal描画ロック防止のため、ギャラリー起動前にモーダルを一時隠す
       setIsPhotoModalOpen(false);
@@ -1144,12 +1151,12 @@ export default function NativeApp() {
             {/* 履歴・お気に入りリスト */}
             <ScrollView style={{ flex: 1, maxHeight: 380 }}>
               {(() => {
-                let filtered = allHistoryLogs;
+                let filtered = [];
                 if (historyTab === 'favorites') {
                   filtered = favorites;
                 } else if (historyTab === 'frequent') {
                   const map = new Map();
-                  allHistoryLogs.forEach((item) => {
+                  [...favorites, ...allHistoryLogs].forEach((item) => {
                     const key = (item.name || '').trim().toLowerCase();
                     if (!key) return;
                     if (!map.has(key)) {
@@ -1162,7 +1169,34 @@ export default function NativeApp() {
                     .sort((a, b) => b.count - a.count)
                     .map((e) => ({ ...e.sample, frequentCount: e.count }));
                 } else if (['breakfast', 'lunch', 'dinner', 'snack'].includes(historyTab)) {
-                  filtered = allHistoryLogs.filter((log) => log.mealType === historyTab);
+                  const map = new Map();
+                  favorites.forEach((fav) => {
+                    const key = (fav.name || '').trim().toLowerCase();
+                    if (!key) return;
+                    if (!fav.mealType || fav.mealType === historyTab) {
+                      map.set(key, fav);
+                    }
+                  });
+                  allHistoryLogs.forEach((log) => {
+                    const key = (log.name || '').trim().toLowerCase();
+                    if (!key) return;
+                    if (log.mealType === historyTab && !map.has(key)) {
+                      map.set(key, log);
+                    }
+                  });
+                  filtered = Array.from(map.values());
+                } else {
+                  // 'recent' (履歴順): お気に入りと全履歴ログを統合
+                  const map = new Map();
+                  favorites.forEach((fav) => {
+                    const key = (fav.name || '').trim().toLowerCase();
+                    if (key) map.set(key, fav);
+                  });
+                  allHistoryLogs.forEach((log) => {
+                    const key = (log.name || '').trim().toLowerCase();
+                    if (key && !map.has(key)) map.set(key, log);
+                  });
+                  filtered = Array.from(map.values());
                 }
 
                 if (historySearchQuery.trim()) {

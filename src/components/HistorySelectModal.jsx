@@ -42,7 +42,11 @@ export default function HistorySelectModal({ selectedDate, onClose, onSave, onFa
   };
 
   const handleToggleFavorite = async (item) => {
-    await nutritionDb.toggleFavorite(item);
+    const targetItem = {
+      ...item,
+      mealType: item?.mealType || targetMealType || 'lunch'
+    };
+    await nutritionDb.toggleFavorite(targetItem);
     await loadData();
     if (onFavoriteToggled) onFavoriteToggled();
   };
@@ -65,7 +69,7 @@ export default function HistorySelectModal({ selectedDate, onClose, onSave, onFa
   // よく食べるメニュー（料理名ごとの出現頻度・最新の栄養価をベースに集約）
   const getFrequentItems = () => {
     const map = new Map();
-    allLogs.forEach((item) => {
+    [...favorites, ...allLogs].forEach((item) => {
       const key = (item.name || '').trim().toLowerCase();
       if (!key) return;
       if (!map.has(key)) {
@@ -94,10 +98,34 @@ export default function HistorySelectModal({ selectedDate, onClose, onSave, onFa
     } else if (activeTab === 'frequent') {
       list = getFrequentItems();
     } else if (['breakfast', 'lunch', 'dinner', 'snack'].includes(activeTab)) {
-      list = allLogs.filter((log) => log.mealType === activeTab);
+      const map = new Map();
+      favorites.forEach((fav) => {
+        const key = (fav.name || '').trim().toLowerCase();
+        if (!key) return;
+        if (!fav.mealType || fav.mealType === activeTab) {
+          map.set(key, fav);
+        }
+      });
+      allLogs.forEach((log) => {
+        const key = (log.name || '').trim().toLowerCase();
+        if (!key) return;
+        if (log.mealType === activeTab && !map.has(key)) {
+          map.set(key, log);
+        }
+      });
+      list = Array.from(map.values());
     } else {
       // 'recent'
-      list = allLogs;
+      const map = new Map();
+      favorites.forEach((fav) => {
+        const key = (fav.name || '').trim().toLowerCase();
+        if (key) map.set(key, fav);
+      });
+      allLogs.forEach((log) => {
+        const key = (log.name || '').trim().toLowerCase();
+        if (key && !map.has(key)) map.set(key, log);
+      });
+      list = Array.from(map.values());
     }
 
     if (searchQuery.trim()) {
