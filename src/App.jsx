@@ -112,6 +112,7 @@ export default function App() {
   });
 
   const [preferredAiModel, setPreferredAiModel] = useState('gemini');
+  const [aiThinkingMode, setAiThinkingMode] = useState('quick');
   const [obsidianEnabled, setObsidianEnabled] = useState(false);
   const [obsidianVaultUri, setObsidianVaultUri] = useState('');
   const [obsidianSaveMode, setObsidianSaveMode] = useState('dedicated');
@@ -136,12 +137,20 @@ export default function App() {
     const savedModel = await safeStorage.getItem('eiyou_preferred_ai_model', 'gemini');
     setPreferredAiModel(savedModel);
 
+    const savedThinking = await safeStorage.getItem('eiyou_ai_thinking_mode', 'quick');
+    setAiThinkingMode(savedThinking);
+
     const obsConfig = await obsidianSyncService.getConfig();
     setObsidianEnabled(obsConfig.enabled);
     setObsidianVaultUri(obsConfig.vaultUri);
     setObsidianSaveMode(obsConfig.saveMode);
     setObsidianFolderName(obsConfig.folderName);
     setObsidianAutoSyncOnLaunch(obsConfig.autoSyncOnLaunch !== false);
+  };
+
+  const handleToggleThinkingMode = async (mode) => {
+    setAiThinkingMode(mode);
+    await safeStorage.setItem('eiyou_ai_thinking_mode', mode);
   };
 
   const loadMealLogs = async () => {
@@ -213,6 +222,7 @@ export default function App() {
           base64Image: base64,
           workerProxyUrl: SECURE_WORKER_PROXY_URL,
           preferredModel: preferredAiModel,
+          thinkingMode: aiThinkingMode,
           onProgress: (msg) => setProgressMsg(msg)
         });
 
@@ -269,7 +279,8 @@ export default function App() {
       const res = await analyzeMealTextWithAI({
         textInput: chatInput,
         workerProxyUrl: SECURE_WORKER_PROXY_URL,
-        preferredModel: preferredAiModel
+        preferredModel: preferredAiModel,
+        thinkingMode: aiThinkingMode
       });
       setChatAnalyzedData(res);
     } catch (e) {
@@ -480,6 +491,8 @@ export default function App() {
         setPortionMultiplier={setPortionMultiplier}
         portionPercentage={portionPercentage}
         setPortionPercentage={setPortionPercentage}
+        aiThinkingMode={aiThinkingMode}
+        onToggleThinkingMode={handleToggleThinkingMode}
         onSelectImage={handleSelectImage}
         onSaveMeal={handleSavePhotoMeal}
       />
@@ -493,6 +506,8 @@ export default function App() {
         chatAnalyzedData={chatAnalyzedData}
         chatMealType={chatMealType}
         setChatMealType={setChatMealType}
+        aiThinkingMode={aiThinkingMode}
+        onToggleThinkingMode={handleToggleThinkingMode}
         onAnalyzeChat={handleAnalyzeChat}
         onSaveChatMeal={handleSaveChatMeal}
       />

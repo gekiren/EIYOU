@@ -9,7 +9,8 @@ export async function analyzeNutritionWithDeepSeek(
   base64Image,
   apiKey,
   modelName = 'deepseek-v4-flash',
-  ocrHintText = ''
+  ocrHintText = '',
+  thinkingMode = 'quick'
 ) {
   if (!apiKey) throw new Error('DeepSeek APIキーが指定されていません。');
 
@@ -23,9 +24,13 @@ export async function analyzeNutritionWithDeepSeek(
   }
 
   const hintPrompt = ocrHintText ? `\n【参考：オンデバイスOCR事前抽出テキスト】\n${ocrHintText}\n` : '';
+  const thinkingInstruction = thinkingMode === 'thinking'
+    ? '\n【解析モード：思考あり (Thinking Mode)】\n食事の隠れた食材・調理油・栄養素の割合を深く段階的に考察した上で、高精度な栄養推定結果を返してください。\n'
+    : '\n【解析モード：クイック (Quick Mode)】\n思考を短縮し、迅速に抽出結果を返してください。\n';
 
   const prompt = `
 提出された食事または栄養成分表示ラベルの画像から栄養データをJSONで抽出してください。
+${thinkingInstruction}
 食品・料理以外の場合は "isFood": false, "reason": "食品または栄養成分表示ラベルを検知できませんでした。" にしてください。
 食品の場合は "isFood": true にしてください。
 ${hintPrompt}
@@ -44,6 +49,8 @@ ${hintPrompt}
 }
 `;
 
+  const targetModel = thinkingMode === 'thinking' ? 'deepseek-reasoner' : modelName;
+
   const response = await fetch('https://api.deepseek.com/chat/completions', {
     method: 'POST',
     headers: {
@@ -51,7 +58,7 @@ ${hintPrompt}
       'Authorization': `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: modelName,
+      model: targetModel,
       messages: [{
         role: 'user',
         content: [
@@ -60,7 +67,7 @@ ${hintPrompt}
         ]
       }],
       response_format: { type: 'json_object' },
-      temperature: 0.1
+      temperature: thinkingMode === 'thinking' ? 0.3 : 0.1
     })
   });
 
@@ -77,13 +84,13 @@ ${hintPrompt}
 /**
  * Cloudflare Worker プロキシ経由のリクエスト処理
  */
-export async function analyzeNutritionWithWorkerProxy(base64Image, proxyUrl, ocrHintText = '', preferredModel = 'gemini') {
+export async function analyzeNutritionWithWorkerProxy(base64Image, proxyUrl, ocrHintText = '', preferredModel = 'gemini', thinkingMode = 'quick') {
   const cleanUrl = proxyUrl.replace(/\/$/, '') + '/api/analyze-nutrition';
 
   const response = await fetch(cleanUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image: base64Image, ocrHintText, preferredModel })
+    body: JSON.stringify({ image: base64Image, ocrHintText, preferredModel, thinkingMode })
   });
 
   if (!response.ok) {
@@ -106,6 +113,7 @@ export async function analyzeMealPhoto({
   deepSeekApiKey,
   workerProxyUrl = SECURE_WORKER_PROXY_URL,
   preferredModel = 'gemini',
+  thinkingMode = 'quick',
   onProgress
 }) {
   let ocrResult = { text: '' };
@@ -121,8 +129,8 @@ export async function analyzeMealPhoto({
   // Step 2: Cloudflare Worker プロキシ利用
   if (workerProxyUrl) {
     try {
-      if (onProgress) onProgress(`AIサーバー経由で食事・PFCバランスを解析中 (${preferredModel === 'deepseek' ? 'DeepSeek優先' : 'Gemini優先'})...`);
-      return await analyzeNutritionWithWorkerProxy(base64Image, workerProxyUrl, ocrResult.text, preferredModel);
+      if (onProgress) onProgress(`AIサーバー経由で食事・PFCバランスを解析中 (${preferredModel === 'deepseek' ? 'DeepSeek優先' : 'Gemini優先'} / ${thinkingMode === 'thinking' ? '思考モード' : 'クイック'})...`);
+      return await analyzeNutritionWithWorkerProxy(base64Image, workerProxyUrl, ocrResult.text, preferredModel, thinkingMode);
     } catch (proxyErr) {
       console.warn('Worker proxy failed, switching to direct API keys if present:', proxyErr);
     }
@@ -132,16 +140,16 @@ export async function analyzeMealPhoto({
   if (preferredModel === 'deepseek') {
     if (deepSeekApiKey) {
       try {
-        if (onProgress) onProgress('DeepSeek V4 で食事解析中...');
-        return await analyzeNutritionWithDeepSeek(base64Image, deepSeekApiKey, 'deepseek-v4-flash', ocrResult.text);
+        if (onProgress) onProgress(`DeepSeek ${thinkingMode === 'thinking' ? 'Reasoner (思考モード)' : 'V4 (クイック)'} で食事解析中...`);
+        return await analyzeNutritionWithDeepSeek(base64Image, deepSeekApiKey, 'deepseek-v4-flash', ocrResult.text, thinkingMode);
       } catch (deepSeekErr) {
         console.warn('DeepSeek API failed, fallbacking to Gemini:', deepSeekErr);
       }
     }
     if (geminiApiKey) {
       try {
-        if (onProgress) onProgress('Gemini 3.6 Flash で食事解析中...');
-        return await analyzeNutritionWithGemini(base64Image, geminiApiKey, 'gemini-3.6-flash', ocrResult.text);
+        if (onProgress) onProgress(`Gemini 3.6 Flash (${thinkingMode === 'thinking' ? '思考モード' : 'クイック'}) で食事解析中...`);
+        return await analyzeNutritionWithGemini(base64Image, geminiApiKey, 'gemini-3.6-flash', ocrResult.text, thinkingMode);
       } catch (geminiErr) {
         console.warn('Gemini API failed:', geminiErr);
       }
@@ -150,12 +158,12 @@ export async function analyzeMealPhoto({
     // 直打ちフォールバック (Gemini優先: デフォルト)
     if (geminiApiKey) {
       try {
-        if (onProgress) onProgress('Gemini 3.6 Flash で食事解析中...');
-        return await analyzeNutritionWithGemini(base64Image, geminiApiKey, 'gemini-3.6-flash', ocrResult.text);
+        if (onProgress) onProgress(`Gemini 3.6 Flash (${thinkingMode === 'thinking' ? '思考モード' : 'クイック'}) で食事解析中...`);
+        return await analyzeNutritionWithGemini(base64Image, geminiApiKey, 'gemini-3.6-flash', ocrResult.text, thinkingMode);
       } catch (geminiErr) {
         console.warn('Gemini API failed, retrying with 2.5-flash:', geminiErr);
         try {
-          return await analyzeNutritionWithGemini(base64Image, geminiApiKey, 'gemini-2.5-flash', ocrResult.text);
+          return await analyzeNutritionWithGemini(base64Image, geminiApiKey, 'gemini-2.5-flash', ocrResult.text, thinkingMode);
         } catch (err2) {
           console.warn('Gemini fallback failed:', err2);
         }
@@ -163,8 +171,8 @@ export async function analyzeMealPhoto({
     }
     if (deepSeekApiKey) {
       try {
-        if (onProgress) onProgress('DeepSeek V4 で食事解析中...');
-        return await analyzeNutritionWithDeepSeek(base64Image, deepSeekApiKey, 'deepseek-v4-flash', ocrResult.text);
+        if (onProgress) onProgress(`DeepSeek ${thinkingMode === 'thinking' ? 'Reasoner (思考モード)' : 'V4 (クイック)'} で食事解析中...`);
+        return await analyzeNutritionWithDeepSeek(base64Image, deepSeekApiKey, 'deepseek-v4-flash', ocrResult.text, thinkingMode);
       } catch (deepSeekErr) {
         console.warn('DeepSeek API failed:', deepSeekErr);
       }
@@ -185,15 +193,20 @@ export async function analyzeMealTextWithAI({
   geminiApiKey,
   deepSeekApiKey,
   workerProxyUrl = SECURE_WORKER_PROXY_URL,
-  preferredModel = 'gemini'
+  preferredModel = 'gemini',
+  thinkingMode = 'quick'
 }) {
   if (!textInput || !textInput.trim()) {
     throw new Error('入力テキストが空です。');
   }
 
+  const thinkingInstruction = thinkingMode === 'thinking'
+    ? '\n【解析モード：思考あり (Thinking Mode)】\n入力文に含まれる料理構成・隠れた食材・調味料・調理法・量の割合についてステップを踏んで深く論理的に思考した上で、栄養数値を精密に計算・抽出してください。\n'
+    : '\n【解析モード：クイック (Quick Mode)】\n迅速に概算数値を返却してください。\n';
+
   const prompt = `
 あなたは管理栄養士AIです。ユーザーが入力した食事の記述「${textInput}」から、食べた料理・食品の名称、推定カロリー(kcal)、タンパク質(g)、脂質(g)、炭水化物(g)、塩分相当量(g)、食物繊維(g)、およびワンポイントアドバイスを算出し、以下のJSON形式で返却してください。
-
+${thinkingInstruction}
 【返却JSON形式】
 {
   "mealName": "主たる料理名や構成食品",
@@ -215,7 +228,7 @@ export async function analyzeMealTextWithAI({
       const response = await fetch(cleanUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ textInput, preferredModel })
+        body: JSON.stringify({ textInput, preferredModel, thinkingMode })
       });
       if (response.ok) {
         const data = await response.json();
@@ -231,12 +244,21 @@ export async function analyzeMealTextWithAI({
     for (const model of ['gemini-3.6-flash', 'gemini-2.5-flash']) {
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
+        const genConfig = {
+          responseMimeType: 'application/json',
+          temperature: thinkingMode === 'thinking' ? 0.3 : 0.1
+        };
+        if (thinkingMode === 'thinking') {
+          genConfig.thinkingConfig = { thinkingBudget: 2048 };
+        } else {
+          genConfig.thinkingConfig = { thinkingBudget: 0 };
+        }
         const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+            generationConfig: genConfig
           })
         });
         if (response.ok) {
@@ -254,6 +276,7 @@ export async function analyzeMealTextWithAI({
   const callDeepSeekDirect = async () => {
     if (!deepSeekApiKey) return null;
     try {
+      const targetModel = thinkingMode === 'thinking' ? 'deepseek-reasoner' : 'deepseek-v4-flash';
       const response = await fetch('https://api.deepseek.com/chat/completions', {
         method: 'POST',
         headers: {
@@ -261,7 +284,7 @@ export async function analyzeMealTextWithAI({
           'Authorization': `Bearer ${deepSeekApiKey}`
         },
         body: JSON.stringify({
-          model: 'deepseek-v4-flash',
+          model: targetModel,
           messages: [{ role: 'user', content: prompt }],
           response_format: { type: 'json_object' }
         })

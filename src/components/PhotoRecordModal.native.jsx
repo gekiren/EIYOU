@@ -40,6 +40,8 @@ export default function PhotoRecordModal({
   setPortionMultiplier,
   portionPercentage,
   setPortionPercentage,
+  aiThinkingMode = 'quick',
+  onToggleThinkingMode,
   onSelectImage,
   onSaveMeal
 }) {
@@ -80,6 +82,26 @@ export default function PhotoRecordModal({
               >
                 <Text style={[styles.modeTabText, recordMode === 'dish' && styles.activeModeTabText]}>
                   🍱 料理・食事写真
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* AI解析思考モード切り替え */}
+            <View style={styles.thinkingTabRow}>
+              <TouchableOpacity
+                style={[styles.thinkingTab, aiThinkingMode === 'quick' && styles.activeThinkingTabQuick]}
+                onPress={() => onToggleThinkingMode && onToggleThinkingMode('quick')}
+              >
+                <Text style={[styles.thinkingTabText, aiThinkingMode === 'quick' && styles.activeThinkingTabText]}>
+                  ⚡ クイック (思考なし)
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.thinkingTab, aiThinkingMode === 'thinking' && styles.activeThinkingTabThinking]}
+                onPress={() => onToggleThinkingMode && onToggleThinkingMode('thinking')}
+              >
+                <Text style={[styles.thinkingTabText, aiThinkingMode === 'thinking' && styles.activeThinkingTabText]}>
+                  🧠 シンキング (思考あり)
                 </Text>
               </TouchableOpacity>
             </View>
@@ -635,5 +657,36 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '700',
     fontSize: 15,
+  },
+  thinkingTabRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginVertical: 6,
+  },
+  thinkingTab: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#1e293b',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  activeThinkingTabQuick: {
+    backgroundColor: '#0284c722',
+    borderColor: '#0284c7',
+  },
+  activeThinkingTabThinking: {
+    backgroundColor: '#8b5cf622',
+    borderColor: '#8b5cf6',
+  },
+  thinkingTabText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#94a3b8',
+  },
+  activeThinkingTabText: {
+    color: '#f8fafc',
+    fontWeight: '700',
   },
 });
