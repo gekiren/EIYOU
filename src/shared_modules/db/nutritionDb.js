@@ -94,6 +94,7 @@ class HybridNutritionDb {
             fat: Number(mealData.fat) || 0,
             carbs: Number(mealData.carbs) || 0,
             sodium: Number(mealData.sodium) || 0,
+            fiber: Number(mealData.fiber) || 0,
             photoUrl: mealData.photoUrl || '',
             memo: mealData.memo || '',
             createdAt: new Date().toISOString()
@@ -121,6 +122,7 @@ class HybridNutritionDb {
         fat: Number(mealData.fat) || 0,
         carbs: Number(mealData.carbs) || 0,
         sodium: Number(mealData.sodium) || 0,
+        fiber: Number(mealData.fiber) || 0,
         photoUrl: mealData.photoUrl || '',
         memo: mealData.memo || '',
         createdAt: new Date().toISOString()
@@ -144,6 +146,7 @@ class HybridNutritionDb {
       fat: Number(mealData.fat) || 0,
       carbs: Number(mealData.carbs) || 0,
       sodium: Number(mealData.sodium) || 0,
+      fiber: Number(mealData.fiber) || 0,
       photoUrl: mealData.photoUrl || '',
       memo: mealData.memo || '',
       createdAt: new Date().toISOString()

@@ -183,6 +183,7 @@ async function callGeminiNutrition(base64Image, apiKey, ocrHintText = '') {
   "fat": 12.0,
   "carbs": 55.0,
   "sodium": 1.5,
+  "fiber": 4.5,
   "ingredients": ["成分1", "成分2"],
   "advice": "ワンポイントアドバイス"
 }
@@ -221,7 +222,7 @@ async function callDeepSeekNutrition(base64Image, apiKey, ocrHintText = '') {
 
   const prompt = `
 食事または栄養成分表示の画像から栄養数値をJSONで返してください。
-{ "isFood": true, "mealName": "食品名", "calories": 450, "protein": 25.5, "fat": 12.0, "carbs": 55.0, "sodium": 1.5, "ingredients": [], "advice": "" }
+{ "isFood": true, "mealName": "食品名", "calories": 450, "protein": 25.5, "fat": 12.0, "carbs": 55.0, "sodium": 1.5, "fiber": 4.5, "ingredients": [], "advice": "" }
 `;
 
   const response = await fetch('https://api.deepseek.com/chat/completions', {
@@ -251,7 +252,7 @@ async function callDeepSeekNutrition(base64Image, apiKey, ocrHintText = '') {
 
 async function callGeminiText(textInput, apiKey) {
   const prompt = `
-あなたは管理栄養士AIです。ユーザーが入力した食事の記述「${textInput}」から、食べた料理・食品の名称、推定カロリー(kcal)、タンパク質(g)、脂質(g)、炭水化物(g)、塩分相当量(g)、およびワンポイントアドバイスを算出し、以下のJSON形式のみで返却してください。
+あなたは管理栄養士AIです。ユーザーが入力した食事の記述「${textInput}」から、食べた料理・食品の名称、推定カロリー(kcal)、タンパク質(g)、脂質(g)、炭水化物(g)、塩分相当量(g)、食物繊維(g)、およびワンポイントアドバイスを算出し、以下のJSON形式のみで返却してください。
 
 {
   "mealName": "主たる料理名や構成食品",
@@ -260,6 +261,7 @@ async function callGeminiText(textInput, apiKey) {
   "fat": 18.5,
   "carbs": 82.0,
   "sodium": 2.2,
+  "fiber": 4.5,
   "ingredients": ["主要食材1", "主要食材2"],
   "advice": "栄養アドバイスメッセージ"
 }
@@ -285,7 +287,7 @@ async function callGeminiText(textInput, apiKey) {
 async function callDeepSeekText(textInput, apiKey) {
   const prompt = `
 あなたは管理栄養士AIです。ユーザーが入力した食事の記述「${textInput}」から栄養データをJSON形式のみで返してください。
-{ "mealName": "料理名", "calories": 650, "protein": 28.0, "fat": 18.5, "carbs": 82.0, "sodium": 2.2, "ingredients": [], "advice": "アドバイス" }
+{ "mealName": "料理名", "calories": 650, "protein": 28.0, "fat": 18.5, "carbs": 82.0, "sodium": 2.2, "fiber": 4.5, "ingredients": [], "advice": "アドバイス" }
 `;
 
   const response = await fetch('https://api.deepseek.com/chat/completions', {

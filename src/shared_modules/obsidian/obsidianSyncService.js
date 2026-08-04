@@ -69,14 +69,16 @@ class ObsidianSyncService {
       acc.fat += Number(item.fat) || 0;
       acc.carbs += Number(item.carbs) || 0;
       acc.sodium += Number(item.sodium) || 0;
+      acc.fiber += Number(item.fiber) || 0;
       return acc;
-    }, { calories: 0, protein: 0, fat: 0, carbs: 0, sodium: 0 });
+    }, { calories: 0, protein: 0, fat: 0, carbs: 0, sodium: 0, fiber: 0 });
 
     const goalCal = userGoals.calories || 2200;
     const goalP = userGoals.protein || 75;
     const goalF = userGoals.fat || 60;
     const goalC = userGoals.carbs || 280;
     const goalS = userGoals.sodium || 7.0;
+    const goalFi = userGoals.fiber || 20.0;
 
     let md = `---
 title: "EIYOU Meal Log - ${safeDate}"
@@ -96,20 +98,21 @@ tags:
 - **脂質**: ${totals.fat.toFixed(1)}g / ${goalF}g
 - **炭水化物**: ${totals.carbs.toFixed(1)}g / ${goalC}g
 - **塩分**: ${totals.sodium.toFixed(1)}g / ${goalS}g
+- **食物繊維**: ${totals.fiber.toFixed(1)}g / ${goalFi}g
 
 ## 🥗 食事ログ一覧
-| 分類 | メニュー名 | カロリー(kcal) | P(g) | F(g) | C(g) | 塩分(g) | メモ |
-| --- | --- | --- | --- | --- | --- | --- | --- |
+| 分類 | メニュー名 | カロリー(kcal) | P(g) | F(g) | C(g) | 塩分(g) | 食物繊維(g) | メモ |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
 `;
 
     if (mealLogs.length === 0) {
-      md += `| - | 記録なし | 0 | 0.0 | 0.0 | 0.0 | 0.0 | - |\n`;
+      md += `| - | 記録なし | 0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | - |\n`;
     } else {
       mealLogs.forEach(log => {
         const typeLink = this._getMealTypeWikiLink(log.mealType);
         const name = (log.name || '食事記録').replace(/\|/g, '\\|');
         const memo = (log.memo || '-').replace(/\|/g, '\\|');
-        md += `| ${typeLink} | ${name} | ${log.calories || 0} | ${(log.protein || 0).toFixed(1)} | ${(log.fat || 0).toFixed(1)} | ${(log.carbs || 0).toFixed(1)} | ${(log.sodium || 0).toFixed(1)} | ${memo} |\n`;
+        md += `| ${typeLink} | ${name} | ${log.calories || 0} | ${(log.protein || 0).toFixed(1)} | ${(log.fat || 0).toFixed(1)} | ${(log.carbs || 0).toFixed(1)} | ${(log.sodium || 0).toFixed(1)} | ${(log.fiber || 0).toFixed(1)} | ${memo} |\n`;
       });
     }
 
@@ -134,18 +137,18 @@ tags:
 # 📱 [EIYOU] 全栄養記録履歴 [[栄養管理]]
 
 ## 🥗 全食事ログ一覧
-| 日付 | 分類 | メニュー名 | カロリー(kcal) | P(g) | F(g) | C(g) | 塩分(g) | メモ |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 日付 | 分類 | メニュー名 | カロリー(kcal) | P(g) | F(g) | C(g) | 塩分(g) | 食物繊維(g) | メモ |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 `;
 
     if (allLogs.length === 0) {
-      md += `| - | - | 記録なし | 0 | 0.0 | 0.0 | 0.0 | 0.0 | - |\n`;
+      md += `| - | - | 記録なし | 0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | - |\n`;
     } else {
       allLogs.forEach(log => {
         const typeLink = this._getMealTypeWikiLink(log.mealType);
         const name = (log.name || '食事記録').replace(/\|/g, '\\|');
         const memo = (log.memo || '-').replace(/\|/g, '\\|');
-        md += `| ${log.date || '-'} | ${typeLink} | ${name} | ${log.calories || 0} | ${(log.protein || 0).toFixed(1)} | ${(log.fat || 0).toFixed(1)} | ${(log.carbs || 0).toFixed(1)} | ${(log.sodium || 0).toFixed(1)} | ${memo} |\n`;
+        md += `| ${log.date || '-'} | ${typeLink} | ${name} | ${log.calories || 0} | ${(log.protein || 0).toFixed(1)} | ${(log.fat || 0).toFixed(1)} | ${(log.carbs || 0).toFixed(1)} | ${(log.sodium || 0).toFixed(1)} | ${(log.fiber || 0).toFixed(1)} | ${memo} |\n`;
       });
     }
 
@@ -164,18 +167,19 @@ tags:
       acc.fat += Number(item.fat) || 0;
       acc.carbs += Number(item.carbs) || 0;
       acc.sodium += Number(item.sodium) || 0;
+      acc.fiber += Number(item.fiber) || 0;
       return acc;
-    }, { calories: 0, protein: 0, fat: 0, carbs: 0, sodium: 0 });
+    }, { calories: 0, protein: 0, fat: 0, carbs: 0, sodium: 0, fiber: 0 });
 
     let section = `## 📱 [EIYOU] Log (${safeDate})\n`;
-    section += `* **摂取合計**: ${totals.calories.toFixed(0)} kcal (P: ${totals.protein.toFixed(1)}g / F: ${totals.fat.toFixed(1)}g / C: ${totals.carbs.toFixed(1)}g / Salt: ${totals.sodium.toFixed(1)}g) [[PFCバランス]]\n`;
-    section += `| 分類 | メニュー | kcal | P(g) | F(g) | C(g) | 塩分(g) |\n`;
-    section += `| --- | --- | --- | --- | --- | --- |\n`;
+    section += `* **摂取合計**: ${totals.calories.toFixed(0)} kcal (P: ${totals.protein.toFixed(1)}g / F: ${totals.fat.toFixed(1)}g / C: ${totals.carbs.toFixed(1)}g / Salt: ${totals.sodium.toFixed(1)}g / Fiber: ${totals.fiber.toFixed(1)}g) [[PFCバランス]]\n`;
+    section += `| 分類 | メニュー | kcal | P(g) | F(g) | C(g) | 塩分(g) | 繊維(g) |\n`;
+    section += `| --- | --- | --- | --- | --- | --- | --- | --- |\n`;
 
     mealLogs.forEach(log => {
       const typeLink = this._getMealTypeWikiLink(log.mealType);
       const name = (log.name || '食事記録').replace(/\|/g, '\\|');
-      section += `| ${typeLink} | ${name} | ${log.calories || 0} | ${(log.protein || 0).toFixed(1)} | ${(log.fat || 0).toFixed(1)} | ${(log.carbs || 0).toFixed(1)} | ${(log.sodium || 0).toFixed(1)} |\n`;
+      section += `| ${typeLink} | ${name} | ${log.calories || 0} | ${(log.protein || 0).toFixed(1)} | ${(log.fat || 0).toFixed(1)} | ${(log.carbs || 0).toFixed(1)} | ${(log.sodium || 0).toFixed(1)} | ${(log.fiber || 0).toFixed(1)} |\n`;
     });
     section += `\n`;
     return section;
