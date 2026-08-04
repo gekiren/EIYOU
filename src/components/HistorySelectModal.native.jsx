@@ -8,16 +8,16 @@ import {
   ScrollView,
   TextInput
 } from 'react-native';
-import LazyImage from './LazyImage.native.jsx';
+import LazyImage from './LazyImage';
 
 export default function HistorySelectModal({
   visible,
   onClose,
   allHistoryLogs = [],
   favorites = [],
-  historyTargetMealType,
-  setHistoryTargetMealType,
-  onAddFromHistory,
+  historyTargetMealType = 'lunch',
+  setHistoryTargetMealType = () => {},
+  onAddFromHistory = () => {},
   onPreviewPhoto
 }) {
   const [activeTab, setActiveTab] = useState('favorites'); // 'favorites' | 'recent' | 'frequent'
@@ -26,7 +26,7 @@ export default function HistorySelectModal({
 
   if (!visible) return null;
 
-  // タブ・検索フィルタリング（堅牢化 ＆ メモリ保護）
+  // タブ・検索フィルタリング（完全保護）
   const displayItems = useMemo(() => {
     try {
       let items = [];
@@ -41,22 +41,21 @@ export default function HistorySelectModal({
         const logs = Array.isArray(allHistoryLogs) ? allHistoryLogs : [];
         
         logs.forEach(item => {
-          if (!item) return;
+          if (!item || typeof item !== 'object') return;
           const key = (item.name || '').trim();
           if (!key) return;
           if (!map.has(key)) {
-            // 軽量な基本データのみ参照コピー
             map.set(key, {
-              id: item.id,
-              name: item.name,
-              calories: item.calories,
-              protein: item.protein,
-              fat: item.fat,
-              carbs: item.carbs,
-              sodium: item.sodium,
-              fiber: item.fiber,
-              photoUrl: item.photoUrl,
-              memo: item.memo,
+              id: item.id || Math.random(),
+              name: item.name || '無題',
+              calories: Number(item.calories) || 0,
+              protein: Number(item.protein) || 0,
+              fat: Number(item.fat) || 0,
+              carbs: Number(item.carbs) || 0,
+              sodium: Number(item.sodium) || 0,
+              fiber: Number(item.fiber) || 0,
+              photoUrl: item.photoUrl || '',
+              memo: item.memo || '',
               count: 0
             });
           }
@@ -71,10 +70,10 @@ export default function HistorySelectModal({
         items = items.filter(i => i && (i.name || '').toLowerCase().includes(q));
       }
 
-      // レンダリング負荷対策：表示件数を上位80件に安全スライス
-      return items.slice(0, 80);
+      // レンダリング負荷対策：表示件数を上位60件に安全スライス
+      return items.slice(0, 60);
     } catch (e) {
-      console.warn('[HistorySelectModal] displayItems computation error:', e);
+      console.warn('[HistorySelectModal] displayItems error:', e);
       return [];
     }
   }, [activeTab, favorites, allHistoryLogs, searchQuery]);
@@ -170,58 +169,63 @@ export default function HistorySelectModal({
             ) : (
               displayItems.map((item, idx) => {
                 if (!item) return null;
-                const scaledCal = Math.round((Number(item.calories) || 0) * multiplier);
-                const scaledP = calcVal(item.protein, multiplier);
-                const scaledF = calcVal(item.fat, multiplier);
-                const scaledC = calcVal(item.carbs, multiplier);
-                const scaledSodium = calcVal(item.sodium, multiplier);
-                const scaledFiber = calcVal(item.fiber, multiplier);
+                try {
+                  const scaledCal = Math.round((Number(item.calories) || 0) * multiplier);
+                  const scaledP = calcVal(item.protein, multiplier);
+                  const scaledF = calcVal(item.fat, multiplier);
+                  const scaledC = calcVal(item.carbs, multiplier);
+                  const scaledSodium = calcVal(item.sodium, multiplier);
+                  const scaledFiber = calcVal(item.fiber, multiplier);
 
-                const itemKey = `hist-${activeTab}-${item.id || item.name || idx}-${idx}`;
+                  const itemKey = `hist-${activeTab}-${item.id || item.name || idx}-${idx}`;
 
-                return (
-                  <View key={itemKey} style={styles.itemCard}>
-                    <View style={styles.itemHeader}>
-                      <Text style={styles.itemName} numberOfLines={1}>
-                        {item.name}
-                        {item.count ? <Text style={styles.countBadge}> ({item.count}回)</Text> : ''}
+                  return (
+                    <View key={itemKey} style={styles.itemCard}>
+                      <View style={styles.itemHeader}>
+                        <Text style={styles.itemName} numberOfLines={1}>
+                          {item.name || '無題'}
+                          {item.count ? <Text style={styles.countBadge}> ({item.count}回)</Text> : ''}
+                        </Text>
+                        <Text style={styles.itemCal}>{scaledCal} kcal</Text>
+                      </View>
+
+                      {/* 遅延ロード写真表示 */}
+                      {Boolean(item.photoUrl) && LazyImage && (
+                        <LazyImage
+                          uri={item.photoUrl}
+                          onPressFullPreview={onPreviewPhoto}
+                          placeholderText="📷 写真を表示（タップで読み込み）"
+                        />
+                      )}
+
+                      <Text style={styles.itemNutrients}>
+                        P:{scaledP}g | F:{scaledF}g | C:{scaledC}g | 塩:{scaledSodium}g
+                        {scaledFiber > 0 ? ` | 繊維:${scaledFiber}g` : ''}
                       </Text>
-                      <Text style={styles.itemCal}>{scaledCal} kcal</Text>
+
+                      <TouchableOpacity
+                        style={styles.addBtn}
+                        onPress={() => {
+                          onAddFromHistory({
+                            ...item,
+                            calories: scaledCal,
+                            protein: scaledP,
+                            fat: scaledF,
+                            carbs: scaledC,
+                            sodium: scaledSodium,
+                            fiber: scaledFiber,
+                            mealType: historyTargetMealType
+                          });
+                        }}
+                      >
+                        <Text style={styles.addBtnText}>➕ 今日の記録に追加 ({multiplier}x)</Text>
+                      </TouchableOpacity>
                     </View>
-
-                    {/* 遅延ロード写真表示（写真がある場合） */}
-                    {Boolean(item.photoUrl) && (
-                      <LazyImage
-                        uri={item.photoUrl}
-                        onPressFullPreview={onPreviewPhoto}
-                        placeholderText="📷 写真を表示（タップで読み込み）"
-                      />
-                    )}
-
-                    <Text style={styles.itemNutrients}>
-                      P:{scaledP}g | F:{scaledF}g | C:{scaledC}g | 塩:{scaledSodium}g
-                      {scaledFiber > 0 ? ` | 繊維:${scaledFiber}g` : ''}
-                    </Text>
-
-                    <TouchableOpacity
-                      style={styles.addBtn}
-                      onPress={() => {
-                        onAddFromHistory({
-                          ...item,
-                          calories: scaledCal,
-                          protein: scaledP,
-                          fat: scaledF,
-                          carbs: scaledC,
-                          sodium: scaledSodium,
-                          fiber: scaledFiber,
-                          mealType: historyTargetMealType
-                        });
-                      }}
-                    >
-                      <Text style={styles.addBtnText}>➕ 今日の記録に追加 ({multiplier}x)</Text>
-                    </TouchableOpacity>
-                  </View>
-                );
+                  );
+                } catch (err) {
+                  console.warn('[HistorySelectModal] render item error:', err);
+                  return null;
+                }
               })
             )}
           </ScrollView>

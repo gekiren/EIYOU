@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
-import LazyImage from './LazyImage.native.jsx';
+import LazyImage from './LazyImage';
 
 const MEAL_TYPE_LABELS = {
   breakfast: '🌅 朝食',
@@ -26,7 +26,8 @@ export default function MealLogList({
 }) {
   const isFav = (name) => {
     const clean = (name || '').trim().toLowerCase();
-    return favorites.some(f => (f.name || '').trim().toLowerCase() === clean);
+    const favList = Array.isArray(favorites) ? favorites : [];
+    return favList.some(f => f && (f.name || '').trim().toLowerCase() === clean);
   };
 
   if (!Array.isArray(mealLogs) || mealLogs.length === 0) {
@@ -42,68 +43,73 @@ export default function MealLogList({
     <View style={styles.container}>
       <Text style={styles.sectionTitle}>📝 食事ログ一覧 ({mealLogs.length}件)</Text>
       {mealLogs.map((log, idx) => {
-        if (!log) return null;
-        const typeLabel = MEAL_TYPE_LABELS[log.mealType] || '🍴 食事';
-        const typeColor = MEAL_TYPE_COLORS[log.mealType] || '#3b82f6';
-        const favorited = isFav(log.name);
-        const cardKey = `meallog-${log.id || log.name || idx}-${idx}`;
+        if (!log || typeof log !== 'object') return null;
+        try {
+          const typeLabel = MEAL_TYPE_LABELS[log.mealType] || '🍴 食事';
+          const typeColor = MEAL_TYPE_COLORS[log.mealType] || '#3b82f6';
+          const favorited = isFav(log.name);
+          const cardKey = `meallog-${log.id || log.name || idx}-${idx}`;
 
-        return (
-          <View key={cardKey} style={styles.logCard}>
-            <View style={styles.cardHeader}>
-              <View style={[styles.typeBadge, { backgroundColor: typeColor }]}>
-                <Text style={styles.typeBadgeText}>{typeLabel}</Text>
+          return (
+            <View key={cardKey} style={styles.logCard}>
+              <View style={styles.cardHeader}>
+                <View style={[styles.typeBadge, { backgroundColor: typeColor }]}>
+                  <Text style={styles.typeBadgeText}>{typeLabel}</Text>
+                </View>
+                <Text style={styles.mealName} numberOfLines={1}>{log.name || '無題'}</Text>
+                <Text style={styles.caloriesText}>{log.calories || 0} kcal</Text>
               </View>
-              <Text style={styles.mealName} numberOfLines={1}>{log.name}</Text>
-              <Text style={styles.caloriesText}>{log.calories || 0} kcal</Text>
-            </View>
 
-            {/* 画像プレビュー（タップして読み込む遅延ロード） */}
-            {Boolean(log.photoUrl) && (
-              <LazyImage
-                uri={log.photoUrl}
-                onPressFullPreview={onPreviewPhoto}
-                placeholderText="📷 写真を表示（タップで読み込み）"
-              />
-            )}
-
-            {/* PFC ＆ 塩分 ＆ 食物繊維 */}
-            <View style={styles.pfcRow}>
-              <Text style={styles.pfcItem}>P: <Text style={styles.pfcVal}>{log.protein || 0}g</Text></Text>
-              <Text style={styles.pfcItem}>F: <Text style={styles.pfcVal}>{log.fat || 0}g</Text></Text>
-              <Text style={styles.pfcItem}>C: <Text style={styles.pfcVal}>{log.carbs || 0}g</Text></Text>
-              <Text style={styles.pfcItem}>塩: <Text style={styles.pfcVal}>{log.sodium || 0}g</Text></Text>
-              {log.fiber !== undefined && log.fiber !== null && (
-                <Text style={styles.pfcItem}>繊維: <Text style={styles.pfcVal}>{log.fiber}g</Text></Text>
+              {/* 画像プレビュー（遅延ロード ＆ 安全ガード） */}
+              {Boolean(log.photoUrl) && LazyImage && (
+                <LazyImage
+                  uri={log.photoUrl}
+                  onPressFullPreview={onPreviewPhoto}
+                  placeholderText="📷 写真を表示（タップで読み込み）"
+                />
               )}
+
+              {/* PFC ＆ 塩分 ＆ 食物繊維 */}
+              <View style={styles.pfcRow}>
+                <Text style={styles.pfcItem}>P: <Text style={styles.pfcVal}>{log.protein || 0}g</Text></Text>
+                <Text style={styles.pfcItem}>F: <Text style={styles.pfcVal}>{log.fat || 0}g</Text></Text>
+                <Text style={styles.pfcItem}>C: <Text style={styles.pfcVal}>{log.carbs || 0}g</Text></Text>
+                <Text style={styles.pfcItem}>塩: <Text style={styles.pfcVal}>{log.sodium || 0}g</Text></Text>
+                {log.fiber !== undefined && log.fiber !== null && (
+                  <Text style={styles.pfcItem}>繊維: <Text style={styles.pfcVal}>{log.fiber}g</Text></Text>
+                )}
+              </View>
+
+              {/* メモ */}
+              {Boolean(log.memo) && (
+                <Text style={styles.memoText} numberOfLines={2}>💡 {log.memo}</Text>
+              )}
+
+              {/* アクションボタン（お気に入り、編集、削除） */}
+              <View style={styles.actionRow}>
+                <TouchableOpacity
+                  style={[styles.actionBtn, favorited && styles.favActiveBtn]}
+                  onPress={() => onToggleFavorite(log)}
+                >
+                  <Text style={[styles.actionBtnText, favorited && styles.favActiveText]}>
+                    {favorited ? '★ お気に入り解除' : '☆ お気に入り追加'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.actionBtn} onPress={() => onEditMeal(log)}>
+                  <Text style={styles.actionBtnText}>✏️ 編集</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={[styles.actionBtn, styles.deleteBtn]} onPress={() => onDeleteMeal(log.id)}>
+                  <Text style={styles.deleteBtnText}>🗑️ 削除</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-
-            {/* メモ */}
-            {Boolean(log.memo) && (
-              <Text style={styles.memoText} numberOfLines={2}>💡 {log.memo}</Text>
-            )}
-
-            {/* アクションボタン（お気に入り、編集、削除） */}
-            <View style={styles.actionRow}>
-              <TouchableOpacity
-                style={[styles.actionBtn, favorited && styles.favActiveBtn]}
-                onPress={() => onToggleFavorite(log)}
-              >
-                <Text style={[styles.actionBtnText, favorited && styles.favActiveText]}>
-                  {favorited ? '★ お気に入り解除' : '☆ お気に入り追加'}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.actionBtn} onPress={() => onEditMeal(log)}>
-                <Text style={styles.actionBtnText}>✏️ 編集</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={[styles.actionBtn, styles.deleteBtn]} onPress={() => onDeleteMeal(log.id)}>
-                <Text style={styles.deleteBtnText}>🗑️ 削除</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        );
+          );
+        } catch (err) {
+          console.warn('[MealLogList] render log error:', err);
+          return null;
+        }
       })}
     </View>
   );
