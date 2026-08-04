@@ -7,8 +7,11 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
-  Switch
+  Switch,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
+import * as Updates from 'expo-updates';
 import { exportMealsToCSV } from '../shared_modules/csv/nutritionCsvService.js';
 import { obsidianSyncService } from '../shared_modules/obsidian/obsidianSyncService.js';
 
@@ -34,9 +37,57 @@ export default function SettingsModal({
   setSyncStatusMsg,
   onSaveSettings
 }) {
-  const [activeTab, setActiveTab] = useState('goals'); // 'goals' | 'obsidian' | 'data'
+  const [activeTab, setActiveTab] = useState('goals'); // 'goals' | 'updates' | 'obsidian' | 'data'
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [otaStatusMsg, setOtaStatusMsg] = useState('');
 
   if (!visible) return null;
+
+  // OTA 手動更新チェック
+  const handleCheckOtaUpdate = async () => {
+    setCheckingUpdate(true);
+    setOtaStatusMsg('🔍 最新アップデートを確認中...');
+    try {
+      if (!Updates.isEnabled) {
+        setOtaStatusMsg('ℹ️ 開発環境（Expo Go）ではOTA更新チェックは利用できません。');
+        setCheckingUpdate(false);
+        return;
+      }
+      const update = await Updates.checkForUpdateAsync();
+      if (update.isAvailable) {
+        setOtaStatusMsg('🎉 新しいアップデートが見つかりました！ダウンロード中...');
+        await Updates.fetchUpdateAsync();
+        setOtaStatusMsg('✅ ダウンロードが完了しました。');
+        Alert.alert(
+          'アップデート完了',
+          '最新バージョンのダウンロードが完了しました。アプリを再起動して適用しますか？',
+          [
+            { text: '後で', style: 'cancel' },
+            { text: '今すぐ再起動', onPress: () => Updates.reloadAsync() }
+          ]
+        );
+      } else {
+        setOtaStatusMsg('✨ お使いのアプリは最新状態です。');
+      }
+    } catch (e) {
+      setOtaStatusMsg(`⚠️ 確認エラー: ${e.message || '更新の確認に失敗しました。'}`);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  // OTA 手動再起動適用
+  const handleForceReloadOta = async () => {
+    try {
+      if (Updates.isEnabled && Updates.reloadAsync) {
+        await Updates.reloadAsync();
+      } else {
+        Alert.alert('通知', '開発環境ではアプリの再起動機能はサポートされていません。');
+      }
+    } catch (e) {
+      Alert.alert('エラー', e.message);
+    }
+  };
 
   const handleManualObsidianSync = async () => {
     setSyncStatusMsg('Obsidianへ同期中...');
@@ -64,30 +115,36 @@ export default function SettingsModal({
             </TouchableOpacity>
           </View>
 
-          {/* タブ切り替え */}
+          {/* タブ切り替え（4タブ構成） */}
           <View style={styles.tabRow}>
             <TouchableOpacity
               style={[styles.tab, activeTab === 'goals' && styles.activeTab]}
               onPress={() => setActiveTab('goals')}
             >
-              <Text style={[styles.tabText, activeTab === 'goals' && styles.activeTabText]}>🎯 目標・AI設定</Text>
+              <Text style={[styles.tabText, activeTab === 'goals' && styles.activeTabText]}>🎯 目標・AI</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'updates' && styles.activeTab]}
+              onPress={() => setActiveTab('updates')}
+            >
+              <Text style={[styles.tabText, activeTab === 'updates' && styles.activeTabText]}>🔄 OTA・更新</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.tab, activeTab === 'obsidian' && styles.activeTab]}
               onPress={() => setActiveTab('obsidian')}
             >
-              <Text style={[styles.tabText, activeTab === 'obsidian' && styles.activeTabText]}>💎 Obsidian連携</Text>
+              <Text style={[styles.tabText, activeTab === 'obsidian' && styles.activeTabText]}>💎 Obsidian</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.tab, activeTab === 'data' && styles.activeTab]}
               onPress={() => setActiveTab('data')}
             >
-              <Text style={[styles.tabText, activeTab === 'data' && styles.activeTabText]}>💾 CSV入出力</Text>
+              <Text style={[styles.tabText, activeTab === 'data' && styles.activeTabText]}>💾 CSVデータ</Text>
             </TouchableOpacity>
           </View>
 
           <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
-            {/* 目標 ＆ AIモデル設定タブ */}
+            {/* 1. 目標 ＆ AIモデル設定タブ */}
             {activeTab === 'goals' && (
               <View style={styles.sectionCard}>
                 <Text style={styles.sectionTitle}>🤖 優先AIモデル選択</Text>
@@ -97,7 +154,7 @@ export default function SettingsModal({
                     onPress={() => setPreferredAiModel('gemini')}
                   >
                     <Text style={[styles.modelBtnText, preferredAiModel === 'gemini' && styles.activeModelBtnText]}>
-                      ✨ Gemini 3.6 Flash (デフォルト)
+                      ✨ Gemini 3.6 Flash (標準)
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -170,7 +227,45 @@ export default function SettingsModal({
               </View>
             )}
 
-            {/* Obsidian 連携タブ */}
+            {/* 2. OTA アプリ更新タブ [復元 ＆ 機能拡張] */}
+            {activeTab === 'updates' && (
+              <View style={styles.sectionCard}>
+                <Text style={styles.sectionTitle}>📲 アプリのOTA更新（EAS Update）</Text>
+                <Text style={styles.guideText}>
+                  ストア経由の再インストールなしで、最新のバグ修正や機能改善プログラムを直接ダウンロード適用します。
+                </Text>
+
+                <View style={styles.infoBox}>
+                  <Text style={styles.infoText}>📌 チャンネル/ブランチ: <Text style={styles.infoVal}>{Updates.channel || 'staging'}</Text></Text>
+                  <Text style={styles.infoText}>📌 Runtime Version: <Text style={styles.infoVal}>{Updates.runtimeVersion || '1.0.0'}</Text></Text>
+                  <Text style={styles.infoText}>📌 Update ID: <Text style={styles.infoVal}>{Updates.updateId ? Updates.updateId.substring(0, 8) + '...' : '最新/ローカル'}</Text></Text>
+                </View>
+
+                {Boolean(otaStatusMsg) && (
+                  <View style={styles.statusBox}>
+                    <Text style={styles.statusText}>{otaStatusMsg}</Text>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.otaCheckBtn, checkingUpdate && styles.disabledBtn]}
+                  onPress={handleCheckOtaUpdate}
+                  disabled={checkingUpdate}
+                >
+                  {checkingUpdate ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <Text style={styles.otaCheckBtnText}>🔍 最新アップデートを確認・取得</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.reloadBtn} onPress={handleForceReloadOta}>
+                  <Text style={styles.reloadBtnText}>⚡ 今すぐアプリを再起動して適用</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* 3. Obsidian 連携タブ */}
             {activeTab === 'obsidian' && (
               <View style={styles.sectionCard}>
                 <View style={styles.switchRow}>
@@ -187,9 +282,9 @@ export default function SettingsModal({
                     <Text style={styles.fieldLabel}>Vault 保存モード</Text>
                     <View style={styles.modeRow}>
                       {[
-                        { key: 'dedicated', label: '日別独立ノート' },
-                        { key: 'append', label: 'デイリーノート追記' },
-                        { key: 'individual', label: '単一ノート集約' }
+                        { key: 'dedicated', label: '日別独立' },
+                        { key: 'append', label: 'デイリー追記' },
+                        { key: 'individual', label: '単一集約' }
                       ].map(m => (
                         <TouchableOpacity
                           key={m.key}
@@ -231,7 +326,7 @@ export default function SettingsModal({
               </View>
             )}
 
-            {/* CSVデータ出入力タブ */}
+            {/* 4. CSVデータ出入力タブ */}
             {activeTab === 'data' && (
               <View style={styles.sectionCard}>
                 <Text style={styles.sectionTitle}>📂 CSVエクスポート・バックアップ</Text>
@@ -265,7 +360,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0f172a',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '90%',
+    maxHeight: '92%',
     padding: 16,
   },
   modalHeader: {
@@ -303,7 +398,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#10b981',
   },
   tabText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#94a3b8',
   },
   activeTabText: {
@@ -371,6 +466,64 @@ const styles = StyleSheet.create({
   },
   inputCell: {
     width: '48%',
+  },
+  infoBox: {
+    backgroundColor: '#0f172a',
+    borderRadius: 8,
+    padding: 10,
+    marginVertical: 10,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  infoText: {
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+  infoVal: {
+    color: '#f8fafc',
+    fontWeight: '600',
+  },
+  statusBox: {
+    backgroundColor: '#0369a122',
+    borderColor: '#0284c7',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  statusText: {
+    color: '#38bdf8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  otaCheckBtn: {
+    backgroundColor: '#3b82f6',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  otaCheckBtnText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  reloadBtn: {
+    backgroundColor: '#0f172a',
+    borderColor: '#3b82f6',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  reloadBtnText: {
+    color: '#38bdf8',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  disabledBtn: {
+    opacity: 0.6,
   },
   switchRow: {
     flexDirection: 'row',
