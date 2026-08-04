@@ -49,6 +49,7 @@ export default function NativeApp() {
   const [historySearchQuery, setHistorySearchQuery] = useState('');
   const [historyTab, setHistoryTab] = useState('favorites'); // 'favorites' | 'recent' | 'frequent' | 'breakfast' | 'lunch' | 'dinner' | 'snack'
   const [historyTargetMealType, setHistoryTargetMealType] = useState('lunch');
+  const [historyMultiplier, setHistoryMultiplier] = useState(1.0);
 
   // 編集モーダル用ステート
   const [editingMealLog, setEditingMealLog] = useState(null);
@@ -360,6 +361,7 @@ export default function NativeApp() {
   };
 
   const handleOpenHistoryModal = async () => {
+    setHistoryMultiplier(1.0);
     try {
       const [logs, favs] = await Promise.all([
         nutritionDb.getAllMealLogs(),
@@ -1107,6 +1109,48 @@ export default function NativeApp() {
               ))}
             </View>
 
+            {/* 追加の倍数 (量) 選択 */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <Text style={styles.inputLabel}>追加の倍数 / 量</Text>
+              <Text style={{ color: '#38bdf8', fontSize: 12, fontWeight: 'bold' }}>{historyMultiplier}倍</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+              {[0.5, 1.0, 1.5, 2.0].map((m) => (
+                <TouchableOpacity
+                  key={m}
+                  onPress={() => setHistoryMultiplier(m)}
+                  style={[
+                    styles.portionBtn,
+                    { flex: 1, paddingVertical: 7 },
+                    historyMultiplier === m && styles.activePortionBtn
+                  ]}
+                >
+                  <Text style={[styles.portionBtnText, historyMultiplier === m && styles.activePortionBtnText]}>
+                    {m}倍
+                  </Text>
+                </TouchableOpacity>
+              ))}
+
+              {/* 0.1単位での微調整ステッパー */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e293b', borderRadius: 8, paddingHorizontal: 4, height: 33, borderWidth: 1, borderColor: '#334155' }}>
+                <TouchableOpacity
+                  onPress={() => setHistoryMultiplier((prev) => Math.max(0.1, Math.round((prev - 0.1) * 10) / 10))}
+                  style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                >
+                  <Text style={{ color: '#f8fafc', fontWeight: 'bold', fontSize: 16 }}>-</Text>
+                </TouchableOpacity>
+                <Text style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: 12, minWidth: 30, textAlign: 'center' }}>
+                  {historyMultiplier}x
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setHistoryMultiplier((prev) => Math.round((prev + 0.1) * 10) / 10)}
+                  style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                >
+                  <Text style={{ color: '#f8fafc', fontWeight: 'bold', fontSize: 16 }}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             {/* 検索入力 */}
             <TextInput
               style={[styles.input, { marginBottom: 10 }]}
@@ -1216,6 +1260,13 @@ export default function NativeApp() {
 
                 return filtered.map((item, index) => {
                   const isFav = favorites.some(f => (f.name || '').trim().toLowerCase() === (item.name || '').trim().toLowerCase());
+                  const calcVal = (val, mult) => Math.round((Number(val) || 0) * mult * 10) / 10;
+                  const cal = Math.round((Number(item.calories) || 0) * historyMultiplier);
+                  const p = calcVal(item.protein, historyMultiplier);
+                  const f = calcVal(item.fat, historyMultiplier);
+                  const c = calcVal(item.carbs, historyMultiplier);
+                  const sodium = calcVal(item.sodium, historyMultiplier);
+                  const fiber = calcVal(item.fiber, historyMultiplier);
 
                   return (
                     <View
@@ -1250,7 +1301,15 @@ export default function NativeApp() {
                           {item.name} {item.frequentCount ? `(${item.frequentCount}回)` : ''}
                         </Text>
                         <Text style={{ color: '#94a3b8', fontSize: 12 }}>
-                          {item.calories} kcal | P:{item.protein}g F:{item.fat}g C:{item.carbs}g
+                          {historyMultiplier === 1 ? (
+                            `${item.calories} kcal | P:${item.protein}g F:${item.fat}g C:${item.carbs}g`
+                          ) : (
+                            <Text>
+                              <Text style={{ color: '#38bdf8', fontWeight: 'bold' }}>{cal} kcal ({historyMultiplier}倍)</Text>
+                              <Text style={{ color: '#64748b' }}> [元:{item.calories}k]</Text>
+                              <Text>{` | P:${p}g F:${f}g C:${c}g`}</Text>
+                            </Text>
+                          )}
                         </Text>
                       </View>
                       <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
@@ -1275,15 +1334,18 @@ export default function NativeApp() {
                             await handleSaveMeal({
                               name: item.name,
                               mealType: historyTargetMealType,
-                              calories: Number(item.calories) || 0,
-                              protein: Number(item.protein) || 0,
-                              fat: Number(item.fat) || 0,
-                              carbs: Number(item.carbs) || 0,
-                              sodium: Number(item.sodium) || 0,
+                              calories: cal,
+                              protein: p,
+                              fat: f,
+                              carbs: c,
+                              sodium: sodium,
+                              fiber: fiber,
                               photoUrl: item.photoUrl || '',
-                              memo: item.memo ? `(履歴追加) ${item.memo}` : '履歴追加'
+                              memo: historyMultiplier !== 1
+                                ? `(履歴追加 ${historyMultiplier}倍) ${item.memo || ''}`.trim()
+                                : (item.memo ? `(履歴追加) ${item.memo}` : '履歴追加')
                             });
-                            Alert.alert('追加完了', `「${item.name}」を${selectedDate}に追加しました`);
+                            Alert.alert('追加完了', `「${item.name}」(${historyMultiplier}倍)を${selectedDate}に追加しました`);
                           }}
                           style={{
                             backgroundColor: '#10b981',

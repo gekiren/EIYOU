@@ -9,6 +9,7 @@ export default function HistorySelectModal({ selectedDate, onClose, onSave, onFa
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('favorites'); // 'favorites' | 'recent' | 'frequent' | 'breakfast' | 'lunch' | 'dinner' | 'snack'
   const [targetMealType, setTargetMealType] = useState('lunch');
+  const [multiplier, setMultiplier] = useState(1.0);
   const [addedItemIds, setAddedItemIds] = useState(new Set());
 
   const loadData = async () => {
@@ -143,18 +144,23 @@ export default function HistorySelectModal({ selectedDate, onClose, onSave, onFa
   const filteredLogs = getFilteredLogs();
 
   const handleAddMeal = async (item) => {
+    const calcVal = (val) => Math.round((Number(val) || 0) * multiplier * 10) / 10;
+    const calories = Math.round((Number(item.calories) || 0) * multiplier);
+
     const newMealData = {
       date: selectedDate,
       mealType: targetMealType,
       name: item.name,
-      calories: Number(item.calories) || 0,
-      protein: Number(item.protein) || 0,
-      fat: Number(item.fat) || 0,
-      carbs: Number(item.carbs) || 0,
-      sodium: Number(item.sodium) || 0,
-      fiber: Number(item.fiber) || 0,
+      calories: calories,
+      protein: calcVal(item.protein),
+      fat: calcVal(item.fat),
+      carbs: calcVal(item.carbs),
+      sodium: calcVal(item.sodium),
+      fiber: calcVal(item.fiber),
       photoUrl: item.photoUrl || '',
-      memo: item.memo ? `(履歴/お気に入りより追加) ${item.memo}` : '履歴/お気に入りより追加'
+      memo: multiplier !== 1
+        ? `(履歴/お気に入り ${multiplier}倍) ${item.memo || ''}`.trim()
+        : (item.memo ? `(履歴/お気に入りより追加) ${item.memo}` : '履歴/お気に入りより追加')
     };
 
     await onSave(newMealData);
@@ -273,6 +279,57 @@ export default function HistorySelectModal({ selectedDate, onClose, onSave, onFa
             </div>
           </div>
 
+          {/* 追加の倍数 (量) 選択 */}
+          <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '12px 16px', borderRadius: '14px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                追加の倍数 / 量
+              </span>
+              <span style={{ color: '#38bdf8', fontSize: '0.85rem', fontWeight: 700 }}>
+                {multiplier}倍
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {[0.5, 1.0, 1.5, 2.0].map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setMultiplier(m)}
+                  style={{
+                    flex: 1,
+                    padding: '6px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid',
+                    borderColor: multiplier === m ? '#3b82f6' : 'transparent',
+                    background: multiplier === m ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+                    color: multiplier === m ? '#fff' : 'var(--text-muted)',
+                    fontWeight: multiplier === m ? 700 : 500,
+                    fontSize: '0.8rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {m}倍
+                </button>
+              ))}
+              <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.1)', padding: '2px' }}>
+                <button
+                  onClick={() => setMultiplier((prev) => Math.max(0.1, Math.round((prev - 0.1) * 10) / 10))}
+                  style={{ padding: '4px 8px', background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontWeight: 700 }}
+                >
+                  -
+                </button>
+                <span style={{ color: '#38bdf8', fontWeight: 700, fontSize: '0.8rem', minWidth: '32px', textAlign: 'center' }}>
+                  {multiplier}x
+                </span>
+                <button
+                  onClick={() => setMultiplier((prev) => Math.round((prev + 0.1) * 10) / 10)}
+                  style={{ padding: '4px 8px', background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontWeight: 700 }}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* 検索バー */}
           <div style={{ position: 'relative' }}>
             <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
@@ -350,6 +407,12 @@ export default function HistorySelectModal({ selectedDate, onClose, onSave, onFa
                 const isJustAdded = addedItemIds.has(item.id || item.name);
                 const isFav = isFavoriteItem(item.name);
 
+                const calcVal = (val) => Math.round((Number(val) || 0) * multiplier * 10) / 10;
+                const cal = Math.round((Number(item.calories) || 0) * multiplier);
+                const p = calcVal(item.protein);
+                const f = calcVal(item.fat);
+                const c = calcVal(item.carbs);
+
                 return (
                   <div
                     key={item.id ? `${item.id}-${index}` : index}
@@ -402,12 +465,21 @@ export default function HistorySelectModal({ selectedDate, onClose, onSave, onFa
                       </div>
 
                       <div style={{ display: 'flex', gap: '10px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                        <span>
-                          <strong style={{ color: '#fff' }}>{item.calories}</strong> kcal
-                        </span>
-                        <span>P: {item.protein}g</span>
-                        <span>F: {item.fat}g</span>
-                        <span>C: {item.carbs}g</span>
+                        {multiplier === 1 ? (
+                          <>
+                            <span><strong style={{ color: '#fff' }}>{item.calories}</strong> kcal</span>
+                            <span>P: {item.protein}g</span>
+                            <span>F: {item.fat}g</span>
+                            <span>C: {item.carbs}g</span>
+                          </>
+                        ) : (
+                          <>
+                            <span><strong style={{ color: '#38bdf8' }}>{cal}</strong> kcal <span style={{ opacity: 0.6 }}>({multiplier}倍)</span></span>
+                            <span>P: {p}g</span>
+                            <span>F: {f}g</span>
+                            <span>C: {c}g</span>
+                          </>
+                        )}
                         {item.date && (
                           <span style={{ opacity: 0.7 }}>({item.date})</span>
                         )}
