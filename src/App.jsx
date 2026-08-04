@@ -1242,60 +1242,99 @@ export default function App() {
             <ScrollView style={{ flex: 1, maxHeight: 380 }}>
               {(() => {
                 let filtered = [];
-                if (historyTab === 'favorites') {
-                  filtered = favorites;
-                } else if (historyTab === 'frequent') {
-                  const map = new Map();
-                  [...favorites, ...allHistoryLogs].forEach((item) => {
-                    const key = (item.name || '').trim().toLowerCase();
-                    if (!key) return;
-                    if (!map.has(key)) {
-                      map.set(key, { count: 1, sample: item });
-                    } else {
-                      map.get(key).count += 1;
-                    }
-                  });
-                  filtered = Array.from(map.values())
-                    .sort((a, b) => b.count - a.count)
-                    .map((e) => ({ ...e.sample, frequentCount: e.count }));
-                } else if (['breakfast', 'lunch', 'dinner', 'snack'].includes(historyTab)) {
-                  const map = new Map();
-                  favorites.forEach((fav) => {
-                    const key = (fav.name || '').trim().toLowerCase();
-                    if (!key) return;
-                    if (!fav.mealType || fav.mealType === historyTab) {
-                      map.set(key, fav);
-                    }
-                  });
-                  allHistoryLogs.forEach((log) => {
-                    const key = (log.name || '').trim().toLowerCase();
-                    if (!key) return;
-                    if (log.mealType === historyTab && !map.has(key)) {
-                      map.set(key, log);
-                    }
-                  });
-                  filtered = Array.from(map.values());
-                } else {
-                  const map = new Map();
-                  favorites.forEach((fav) => {
-                    const key = (fav.name || '').trim().toLowerCase();
-                    if (key) map.set(key, fav);
-                  });
-                  allHistoryLogs.forEach((log) => {
-                    const key = (log.name || '').trim().toLowerCase();
-                    if (key && !map.has(key)) map.set(key, log);
-                  });
-                  filtered = Array.from(map.values());
+                try {
+                  const safeLogs = Array.isArray(allHistoryLogs) ? allHistoryLogs : [];
+                  const safeFavs = Array.isArray(favorites) ? favorites : [];
+                  const getItemName = (item) => {
+                    if (!item) return '';
+                    if (typeof item.name === 'string') return item.name.trim();
+                    if (item.name != null) return String(item.name).trim();
+                    return '';
+                  };
+
+                  if (historyTab === 'favorites') {
+                    filtered = safeFavs;
+                  } else if (historyTab === 'frequent') {
+                    const map = new Map();
+                    safeLogs.forEach((log) => {
+                      if (!log) return;
+                      const name = getItemName(log);
+                      if (!name) return;
+                      const key = name.toLowerCase();
+                      if (!map.has(key)) {
+                        map.set(key, { count: 1, sample: log });
+                      } else {
+                        map.get(key).count += 1;
+                      }
+                    });
+                    safeFavs.forEach((fav) => {
+                      if (!fav) return;
+                      const name = getItemName(fav);
+                      if (!name) return;
+                      const key = name.toLowerCase();
+                      if (!map.has(key)) {
+                        map.set(key, { count: 1, sample: fav });
+                      }
+                    });
+                    filtered = Array.from(map.values())
+                      .filter((e) => e && e.sample)
+                      .sort((a, b) => (b.count || 0) - (a.count || 0))
+                      .map((e) => ({ ...(e.sample || {}), frequentCount: e.count }));
+                  } else if (['breakfast', 'lunch', 'dinner', 'snack'].includes(historyTab)) {
+                    const map = new Map();
+                    safeLogs.forEach((log) => {
+                      if (!log) return;
+                      const name = getItemName(log);
+                      if (!name) return;
+                      const key = name.toLowerCase();
+                      if (log.mealType === historyTab && !map.has(key)) {
+                        map.set(key, log);
+                      }
+                    });
+                    safeFavs.forEach((fav) => {
+                      if (!fav) return;
+                      const name = getItemName(fav);
+                      if (!name) return;
+                      const key = name.toLowerCase();
+                      if ((!fav.mealType || fav.mealType === historyTab) && !map.has(key)) {
+                        map.set(key, fav);
+                      }
+                    });
+                    filtered = Array.from(map.values());
+                  } else {
+                    const map = new Map();
+                    safeLogs.forEach((log) => {
+                      if (!log) return;
+                      const name = getItemName(log);
+                      if (!name) return;
+                      const key = name.toLowerCase();
+                      if (!map.has(key)) map.set(key, log);
+                    });
+                    safeFavs.forEach((fav) => {
+                      if (!fav) return;
+                      const name = getItemName(fav);
+                      if (!name) return;
+                      const key = name.toLowerCase();
+                      if (!map.has(key)) map.set(key, fav);
+                    });
+                    filtered = Array.from(map.values());
+                  }
+
+                  if (historySearchQuery && historySearchQuery.trim()) {
+                    const q = historySearchQuery.trim().toLowerCase();
+                    filtered = filtered.filter((item) => {
+                      if (!item) return false;
+                      const name = (item.name || '').toString().toLowerCase();
+                      const memo = (item.memo || '').toString().toLowerCase();
+                      return name.includes(q) || memo.includes(q);
+                    });
+                  }
+                } catch (err) {
+                  console.error('Error filtering history logs:', err);
+                  filtered = Array.isArray(favorites) ? favorites : [];
                 }
 
-                if (historySearchQuery.trim()) {
-                  const q = historySearchQuery.toLowerCase();
-                  filtered = filtered.filter(
-                    (item) => (item.name && item.name.toLowerCase().includes(q)) || (item.memo && item.memo.toLowerCase().includes(q))
-                  );
-                }
-
-                if (filtered.length === 0) {
+                if (!filtered || filtered.length === 0) {
                   return (
                     <Text style={{ color: '#94a3b8', textAlign: 'center', marginVertical: 30, fontSize: 13 }}>
                       {historyTab === 'favorites' ? 'お気に入りに登録された食事項目がありません。リストの「★」で登録できます。' : '該当する食事履歴がありません'}
@@ -1304,7 +1343,10 @@ export default function App() {
                 }
 
                 return filtered.map((item, index) => {
-                  const isFav = favorites.some(f => (f.name || '').trim().toLowerCase() === (item.name || '').trim().toLowerCase());
+                  if (!item) return null;
+                  const itemName = (item.name || '名称不明').toString();
+                  const safeFavs = Array.isArray(favorites) ? favorites : [];
+                  const isFav = safeFavs.some((f) => f && (f.name || '').toString().trim().toLowerCase() === itemName.trim().toLowerCase());
                   const calcVal = (val, mult) => Math.round((Number(val) || 0) * mult * 10) / 10;
                   const cal = Math.round((Number(item.calories) || 0) * historyMultiplier);
                   const p = calcVal(item.protein, historyMultiplier);
