@@ -429,7 +429,7 @@ export default function App() {
 
       <ScrollView contentContainerStyle={styles.mainScroll} showsVerticalScrollIndicator={false}>
         {/* 1. 今日の栄養サマリー ＆ カロリー/PFC/塩分/食物繊維進捗バー */}
-        <NutritionSummaryCard totals={totals} userGoals={userGoals} />
+        <NutritionSummaryCard totals={totals} userGoals={userGoals} mealLogs={mealLogs} />
 
         {/* 食事追加アクションボタン群 */}
         <View style={styles.actionGrid}>

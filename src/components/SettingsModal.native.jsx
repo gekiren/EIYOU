@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -14,6 +14,7 @@ import {
 import * as Updates from 'expo-updates';
 import { exportMealsToCSV } from '../shared_modules/csv/nutritionCsvService.js';
 import { obsidianSyncService } from '../shared_modules/obsidian/obsidianSyncService.js';
+import { calculateTargetGoals } from '../utils/nutritionCalculator.js';
 
 export default function SettingsModal({
   visible,
@@ -40,6 +41,40 @@ export default function SettingsModal({
   const [activeTab, setActiveTab] = useState('goals'); // 'goals' | 'updates' | 'obsidian' | 'data'
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [otaStatusMsg, setOtaStatusMsg] = useState('');
+
+  // BMR / TDEE 計算用フォームステート
+  const [gender, setGender] = useState('male');
+  const [age, setAge] = useState('30');
+  const [height, setHeight] = useState('170');
+  const [weight, setWeight] = useState('65');
+  const [activityLevel, setActivityLevel] = useState('moderate');
+  const [goalType, setGoalType] = useState('maintain');
+
+  // 計算結果プレビュー
+  const calculatedGoals = useMemo(() => {
+    return calculateTargetGoals({
+      gender,
+      age: Number(age) || 30,
+      height: Number(height) || 170,
+      weight: Number(weight) || 65,
+      activityLevel,
+      goalType
+    });
+  }, [gender, age, height, weight, activityLevel, goalType]);
+
+  // 目標値への自動適用
+  const handleApplyCalculatedGoals = () => {
+    setUserGoals({
+      ...userGoals,
+      calories: calculatedGoals.calories,
+      protein: calculatedGoals.protein,
+      fat: calculatedGoals.fat,
+      carbs: calculatedGoals.carbs,
+      sodium: calculatedGoals.sodium,
+      fiber: calculatedGoals.fiber
+    });
+    Alert.alert('🎉 目標を更新', 'BMR / TDEE 電卓で計算された目標値（カロリー・PFC・塩分・食物繊維）を適用しました！');
+  };
 
   if (!visible) return null;
 
@@ -146,88 +181,214 @@ export default function SettingsModal({
           <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
             {/* 1. 目標 ＆ AIモデル設定タブ */}
             {activeTab === 'goals' && (
-              <View style={styles.sectionCard}>
-                <Text style={styles.sectionTitle}>🤖 優先AIモデル選択</Text>
-                <View style={styles.aiModelRow}>
-                  <TouchableOpacity
-                    style={[styles.modelBtn, preferredAiModel === 'gemini' && styles.activeModelBtn]}
-                    onPress={() => setPreferredAiModel('gemini')}
-                  >
-                    <Text style={[styles.modelBtnText, preferredAiModel === 'gemini' && styles.activeModelBtnText]}>
-                      ✨ Gemini 3.6 Flash (標準)
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modelBtn, preferredAiModel === 'deepseek' && styles.activeModelBtn]}
-                    onPress={() => setPreferredAiModel('deepseek')}
-                  >
-                    <Text style={[styles.modelBtnText, preferredAiModel === 'deepseek' && styles.activeModelBtnText]}>
-                      ⚡ DeepSeek V4 (高速)
-                    </Text>
-                  </TouchableOpacity>
+              <>
+                {/* AIモデル選択 */}
+                <View style={styles.sectionCard}>
+                  <Text style={styles.sectionTitle}>🤖 優先AIモデル選択</Text>
+                  <View style={styles.aiModelRow}>
+                    <TouchableOpacity
+                      style={[styles.modelBtn, preferredAiModel === 'gemini' && styles.activeModelBtn]}
+                      onPress={() => setPreferredAiModel('gemini')}
+                    >
+                      <Text style={[styles.modelBtnText, preferredAiModel === 'gemini' && styles.activeModelBtnText]}>
+                        ✨ Gemini 3.6 Flash (標準)
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.modelBtn, preferredAiModel === 'deepseek' && styles.activeModelBtn]}
+                      onPress={() => setPreferredAiModel('deepseek')}
+                    >
+                      <Text style={[styles.modelBtnText, preferredAiModel === 'deepseek' && styles.activeModelBtnText]}>
+                        ⚡ DeepSeek V4 (高速)
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
-                <Text style={[styles.sectionTitle, { marginTop: 16 }]}>🎯 1日の目標摂取量</Text>
-                <View style={styles.inputGrid}>
-                  <View style={styles.inputCell}>
-                    <Text style={styles.fieldLabel}>目標カロリー (kcal)</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      keyboardType="numeric"
-                      value={String(userGoals.calories || 2200)}
-                      onChangeText={(val) => setUserGoals({ ...userGoals, calories: Number(val) || 0 })}
-                    />
+                {/* BMR / TDEE 自動計算電卓モジュール */}
+                <View style={styles.sectionCard}>
+                  <Text style={styles.sectionTitle}>🧮 BMR / TDEE 目標自動計算電卓</Text>
+                  <Text style={styles.guideText}>
+                    性別・身体情報・活動度を入力すると、BMR (基礎代謝) と TDEE (総消費カロリー) から最適な栄養目標を自動算定します。
+                  </Text>
+
+                  {/* 性別選択 */}
+                  <Text style={styles.fieldLabel}>性別</Text>
+                  <View style={styles.selectorRow}>
+                    <TouchableOpacity
+                      style={[styles.selectorBtn, gender === 'male' && styles.activeSelectorBtn]}
+                      onPress={() => setGender('male')}
+                    >
+                      <Text style={[styles.selectorText, gender === 'male' && styles.activeSelectorText]}>👨 男性</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.selectorBtn, gender === 'female' && styles.activeSelectorBtn]}
+                      onPress={() => setGender('female')}
+                    >
+                      <Text style={[styles.selectorText, gender === 'female' && styles.activeSelectorText]}>👩 女性</Text>
+                    </TouchableOpacity>
                   </View>
-                  <View style={styles.inputCell}>
-                    <Text style={styles.fieldLabel}>タンパク質 (g)</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      keyboardType="numeric"
-                      value={String(userGoals.protein || 75)}
-                      onChangeText={(val) => setUserGoals({ ...userGoals, protein: Number(val) || 0 })}
-                    />
+
+                  {/* 身体情報 (年齢 / 身長 / 体重) */}
+                  <View style={styles.inputGrid}>
+                    <View style={styles.inputCellThird}>
+                      <Text style={styles.fieldLabel}>年齢 (歳)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={age}
+                        onChangeText={setAge}
+                      />
+                    </View>
+                    <View style={styles.inputCellThird}>
+                      <Text style={styles.fieldLabel}>身長 (cm)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={height}
+                        onChangeText={setHeight}
+                      />
+                    </View>
+                    <View style={styles.inputCellThird}>
+                      <Text style={styles.fieldLabel}>体重 (kg)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={weight}
+                        onChangeText={setWeight}
+                      />
+                    </View>
                   </View>
-                  <View style={styles.inputCell}>
-                    <Text style={styles.fieldLabel}>脂質 (g)</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      keyboardType="numeric"
-                      value={String(userGoals.fat || 60)}
-                      onChangeText={(val) => setUserGoals({ ...userGoals, fat: Number(val) || 0 })}
-                    />
+
+                  {/* 活動レベル */}
+                  <Text style={styles.fieldLabel}>日常生活の活動レベル</Text>
+                  <View style={styles.selectOptionList}>
+                    {[
+                      { key: 'sedentary', label: 'ほぼ運動しない (デスクワーク)' },
+                      { key: 'light', label: '軽い運動 / 立ち仕事 (週1-3日)' },
+                      { key: 'moderate', label: '適度な運動 (週3-5日)' },
+                      { key: 'active', label: '活発な運動 (週6-7日)' },
+                      { key: 'veryActive', label: '非常に激しい運動 / アスリート' },
+                    ].map((opt) => (
+                      <TouchableOpacity
+                        key={opt.key}
+                        style={[styles.optionChip, activityLevel === opt.key && styles.activeOptionChip]}
+                        onPress={() => setActivityLevel(opt.key)}
+                      >
+                        <Text style={[styles.optionChipText, activityLevel === opt.key && styles.activeOptionChipText]}>
+                          {opt.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
-                  <View style={styles.inputCell}>
-                    <Text style={styles.fieldLabel}>炭水化物 (g)</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      keyboardType="numeric"
-                      value={String(userGoals.carbs || 280)}
-                      onChangeText={(val) => setUserGoals({ ...userGoals, carbs: Number(val) || 0 })}
-                    />
+
+                  {/* 目的 (減量 / 維持 / 増量) */}
+                  <Text style={styles.fieldLabel}>目的・ターゲット</Text>
+                  <View style={styles.selectorRow}>
+                    {[
+                      { key: 'cut', label: '🔥 減量 (-15%)' },
+                      { key: 'maintain', label: '⚖️ 維持 (0%)' },
+                      { key: 'bulk', label: '💪 増量 (+10%)' },
+                    ].map((g) => (
+                      <TouchableOpacity
+                        key={g.key}
+                        style={[styles.selectorBtn, goalType === g.key && styles.activeSelectorBtn]}
+                        onPress={() => setGoalType(g.key)}
+                      >
+                        <Text style={[styles.selectorText, goalType === g.key && styles.activeSelectorText]}>
+                          {g.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
-                  <View style={styles.inputCell}>
-                    <Text style={styles.fieldLabel}>塩分相当量 (g)</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      keyboardType="numeric"
-                      value={String(userGoals.sodium || 7.0)}
-                      onChangeText={(val) => setUserGoals({ ...userGoals, sodium: Number(val) || 0 })}
-                    />
-                  </View>
-                  <View style={styles.inputCell}>
-                    <Text style={styles.fieldLabel}>食物繊維 (g)</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      keyboardType="numeric"
-                      value={String(userGoals.fiber || 20.0)}
-                      onChangeText={(val) => setUserGoals({ ...userGoals, fiber: Number(val) || 0 })}
-                    />
+
+                  {/* 計算結果プレビューボックス */}
+                  <View style={styles.calcPreviewBox}>
+                    <View style={styles.calcStatRow}>
+                      <Text style={styles.calcStatItem}>BMR: <Text style={styles.calcHighlight}>{calculatedGoals.bmr}</Text> kcal</Text>
+                      <Text style={styles.calcStatItem}>TDEE: <Text style={styles.calcHighlight}>{calculatedGoals.tdee}</Text> kcal</Text>
+                    </View>
+
+                    <View style={styles.calcGoalDetailBox}>
+                      <Text style={styles.calcTargetTitle}>🎯 推奨目標値</Text>
+                      <Text style={styles.calcTargetMain}>
+                        {calculatedGoals.calories} <Text style={styles.subUnit}>kcal/日</Text>
+                      </Text>
+                      <Text style={styles.calcPfcSub}>
+                        P: {calculatedGoals.protein}g | F: {calculatedGoals.fat}g | C: {calculatedGoals.carbs}g | 塩分: {calculatedGoals.sodium}g
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity style={styles.applyGoalsBtn} onPress={handleApplyCalculatedGoals}>
+                      <Text style={styles.applyGoalsBtnText}>✨ この計算結果を1日の目標に反映する</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
-              </View>
+
+                {/* 1日の目標摂取量フォーム (直接入力・編集可能) */}
+                <View style={styles.sectionCard}>
+                  <Text style={styles.sectionTitle}>🎯 1日の目標摂取量 (直接編集)</Text>
+                  <View style={styles.inputGrid}>
+                    <View style={styles.inputCell}>
+                      <Text style={styles.fieldLabel}>目標カロリー (kcal)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={String(userGoals.calories || 2200)}
+                        onChangeText={(val) => setUserGoals({ ...userGoals, calories: Number(val) || 0 })}
+                      />
+                    </View>
+                    <View style={styles.inputCell}>
+                      <Text style={styles.fieldLabel}>タンパク質 (g)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={String(userGoals.protein || 75)}
+                        onChangeText={(val) => setUserGoals({ ...userGoals, protein: Number(val) || 0 })}
+                      />
+                    </View>
+                    <View style={styles.inputCell}>
+                      <Text style={styles.fieldLabel}>脂質 (g)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={String(userGoals.fat || 60)}
+                        onChangeText={(val) => setUserGoals({ ...userGoals, fat: Number(val) || 0 })}
+                      />
+                    </View>
+                    <View style={styles.inputCell}>
+                      <Text style={styles.fieldLabel}>炭水化物 (g)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={String(userGoals.carbs || 280)}
+                        onChangeText={(val) => setUserGoals({ ...userGoals, carbs: Number(val) || 0 })}
+                      />
+                    </View>
+                    <View style={styles.inputCell}>
+                      <Text style={styles.fieldLabel}>塩分相当量 (g)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={String(userGoals.sodium || 7.0)}
+                        onChangeText={(val) => setUserGoals({ ...userGoals, sodium: Number(val) || 0 })}
+                      />
+                    </View>
+                    <View style={styles.inputCell}>
+                      <Text style={styles.fieldLabel}>食物繊維 (g)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={String(userGoals.fiber || 20.0)}
+                        onChangeText={(val) => setUserGoals({ ...userGoals, fiber: Number(val) || 0 })}
+                      />
+                    </View>
+                  </View>
+                </View>
+              </>
             )}
 
-            {/* 2. OTA アプリ更新タブ [復元 ＆ 機能拡張] */}
+            {/* 2. OTA アプリ更新タブ */}
             {activeTab === 'updates' && (
               <View style={styles.sectionCard}>
                 <Text style={styles.sectionTitle}>📲 アプリのOTA更新（EAS Update）</Text>
@@ -420,6 +581,11 @@ const styles = StyleSheet.create({
     color: '#f8fafc',
     marginBottom: 8,
   },
+  guideText: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginBottom: 10,
+  },
   aiModelRow: {
     gap: 8,
   },
@@ -466,6 +632,120 @@ const styles = StyleSheet.create({
   },
   inputCell: {
     width: '48%',
+  },
+  inputCellThird: {
+    width: '31%',
+  },
+  selectorRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginVertical: 4,
+  },
+  selectorBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#0f172a',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  activeSelectorBtn: {
+    backgroundColor: '#3b82f622',
+    borderColor: '#3b82f6',
+  },
+  selectorText: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  activeSelectorText: {
+    color: '#38bdf8',
+    fontWeight: '700',
+  },
+  selectOptionList: {
+    gap: 6,
+    marginVertical: 4,
+  },
+  optionChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#0f172a',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  activeOptionChip: {
+    backgroundColor: '#10b98122',
+    borderColor: '#10b981',
+  },
+  optionChipText: {
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+  activeOptionChipText: {
+    color: '#10b981',
+    fontWeight: '700',
+  },
+  calcPreviewBox: {
+    backgroundColor: '#0f172a',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#3b82f644',
+  },
+  calcStatRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 8,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+  },
+  calcStatItem: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  calcHighlight: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#f8fafc',
+  },
+  calcGoalDetailBox: {
+    alignItems: 'center',
+    marginVertical: 4,
+  },
+  calcTargetTitle: {
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+  calcTargetMain: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#10b981',
+    marginVertical: 2,
+  },
+  subUnit: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '400',
+  },
+  calcPfcSub: {
+    fontSize: 11,
+    color: '#cbd5e1',
+    fontWeight: '600',
+  },
+  applyGoalsBtn: {
+    backgroundColor: '#3b82f6',
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  applyGoalsBtnText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 12,
   },
   infoBox: {
     backgroundColor: '#0f172a',
@@ -578,11 +858,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '700',
     fontSize: 13,
-  },
-  guideText: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginBottom: 10,
   },
   csvExportBtn: {
     backgroundColor: '#10b981',
