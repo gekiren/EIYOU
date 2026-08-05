@@ -8,6 +8,12 @@ import {
   Alert,
   ActivityIndicator,
   PanResponder,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import { calculateAutophagyStatus } from '../shared_modules/autophagy/autophagyService.js';
 import { recommendAutophagyTime } from '../shared_modules/ai/nutritionAiService.js';
@@ -33,20 +39,32 @@ export default function AutophagyCard({
     calculateAutophagyStatus(startTime, targetHours)
   );
 
+  // スワイプ中のローカル時間表示用ステート
+  const [displayHours, setDisplayHours] = useState(targetHours);
+  const isDraggingRef = useRef(false);
+
   // AI最適化提案用ステート
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiRecommendation, setAiRecommendation] = useState(null);
+
+  // カスタム手動入力モーダル用ステート
+  const [isCustomModalVisible, setIsCustomModalVisible] = useState(false);
+  const [customHoursText, setCustomHoursText] = useState('16');
+  const [customMinutesText, setCustomMinutesText] = useState('0');
 
   // スライダー幅計測用
   const [sliderWidth, setSliderWidth] = useState(240);
   const sliderWidthRef = useRef(240);
   const targetHoursRef = useRef(targetHours);
   const MIN_HOURS = 8.0;
-  const MAX_HOURS = 36.0;
+  const MAX_HOURS = 24.0;
   const STEP = 0.5;
 
   useEffect(() => {
     targetHoursRef.current = targetHours;
+    if (!isDraggingRef.current) {
+      setDisplayHours(targetHours);
+    }
   }, [targetHours]);
 
   // 1秒ごとに絶食カウントダウン・状態更新
@@ -106,9 +124,12 @@ export default function AutophagyCard({
     });
   };
 
-  // 目標時間の変更
+  // 目標時間の変更（即時保存）
   const handleSelectTargetHours = (hours) => {
-    const clamped = Math.min(MAX_HOURS, Math.max(MIN_HOURS, Math.round(hours * 2) / 2));
+    const rounded = Math.round(hours * 100) / 100;
+    const clamped = Math.min(168, Math.max(1, rounded)); // 全体制限: 1h~168h
+    setDisplayHours(clamped);
+    targetHoursRef.current = clamped;
     if (clamped !== targetHours) {
       triggerImpact('light');
       onChangeConfig({
@@ -121,40 +142,50 @@ export default function AutophagyCard({
 
   // 0.5時間刻みのインクリメント/デクリメント
   const handleStepHours = (delta) => {
-    const next = targetHours + delta;
+    const next = Math.round((displayHours + delta) * 2) / 2;
     handleSelectTargetHours(next);
   };
 
-  // PanResponder によるスワイプ調整
+  // PanResponder によるスワイプ調整 (スワイプ中はローカル表示のみ更新)
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (evt) => {
-        updateHoursFromTouch(evt.nativeEvent.locationX);
+        isDraggingRef.current = true;
+        updateHoursFromTouchLocal(evt.nativeEvent.locationX);
       },
       onPanResponderMove: (evt) => {
-        updateHoursFromTouch(evt.nativeEvent.locationX);
+        updateHoursFromTouchLocal(evt.nativeEvent.locationX);
       },
       onPanResponderRelease: () => {
+        isDraggingRef.current = false;
         triggerImpact('medium');
+        // スワイプ完了時に 1 度だけ親に通知・永続化保存
+        const finalHours = targetHoursRef.current;
+        if (finalHours !== targetHours) {
+          onChangeConfig({
+            ...config,
+            targetHours: finalHours,
+            notified: false,
+          });
+        }
+      },
+      onPanResponderTerminate: () => {
+        isDraggingRef.current = false;
       },
     })
   ).current;
 
-  const updateHoursFromTouch = (locationX) => {
+  const updateHoursFromTouchLocal = (locationX) => {
     const w = sliderWidthRef.current || 240;
     const ratio = Math.min(1, Math.max(0, locationX / w));
     const rawHours = MIN_HOURS + ratio * (MAX_HOURS - MIN_HOURS);
     const steppedHours = Math.round(rawHours * 2) / 2; // 0.5単位に丸め
     if (steppedHours !== targetHoursRef.current) {
       targetHoursRef.current = steppedHours;
+      setDisplayHours(steppedHours);
       triggerImpact('selection');
-      onChangeConfig({
-        ...config,
-        targetHours: steppedHours,
-        notified: false,
-      });
     }
   };
 
@@ -184,6 +215,37 @@ export default function AutophagyCard({
     Alert.alert('🎯 目標適用完了', `AIが提案した ${hours}時間をオートファジー目標時間として設定しました！`);
   };
 
+  // モーダルを開く
+  const handleOpenCustomModal = () => {
+    triggerImpact('light');
+    const h = Math.floor(displayHours);
+    const m = Math.round((displayHours - h) * 60);
+    setCustomHoursText(String(h));
+    setCustomMinutesText(String(m));
+    setIsCustomModalVisible(true);
+  };
+
+  // モーダルでカスタム時間を保存
+  const handleSaveCustomHours = () => {
+    const hoursNum = parseInt(customHoursText, 10) || 0;
+    const minutesNum = parseInt(customMinutesText, 10) || 0;
+    const totalHours = hoursNum + minutesNum / 60;
+
+    if (totalHours < 1 || totalHours > 168) {
+      Alert.alert('入力エラー', '絶食目標時間は1時間から168時間(7日間)の範囲で設定してください。');
+      return;
+    }
+
+    handleSelectTargetHours(totalHours);
+    setIsCustomModalVisible(false);
+  };
+
+  // クイック入力（28h, 36h, 48h, 72h など）
+  const handleSelectQuickCustom = (h) => {
+    setCustomHoursText(String(h));
+    setCustomMinutesText('0');
+  };
+
   const presetHours = [12, 14, 16, 18, 20, 24];
 
   // 時間のフォーマット補助 (例: 16.5 -> 16時間30分)
@@ -196,7 +258,8 @@ export default function AutophagyCard({
     return `${whole}時間${mins}分`;
   };
 
-  const progressRatio = Math.min(1, Math.max(0, (targetHours - MIN_HOURS) / (MAX_HOURS - MIN_HOURS)));
+  const currentDisplayHours = isDraggingRef.current ? displayHours : targetHours;
+  const progressRatio = Math.min(1, Math.max(0, (displayHours - MIN_HOURS) / (MAX_HOURS - MIN_HOURS)));
 
   return (
     <View style={styles.card}>
@@ -207,7 +270,7 @@ export default function AutophagyCard({
           <View>
             <Text style={styles.title}>オートファジー監視タイマー</Text>
             <Text style={styles.subtitle}>
-              目標絶食時間: <Text style={styles.targetHoursHighlight}>{targetHours}h</Text> ({formatHoursText(targetHours)})
+              目標絶食時間: <Text style={styles.targetHoursHighlight}>{currentDisplayHours}h</Text> ({formatHoursText(currentDisplayHours)})
             </Text>
           </View>
         </View>
@@ -296,7 +359,7 @@ export default function AutophagyCard({
       {/* AI最適化提案 ＆ 目標絶食時間スワイプ調整 */}
       <View style={styles.targetSelector}>
         <View style={styles.selectorHeader}>
-          <Text style={styles.selectorLabel}>目標絶食時間の調整 (30分単位スワイプ):</Text>
+          <Text style={styles.selectorLabel}>目標絶食時間の調整 (8h〜24h スワイプ):</Text>
           <TouchableOpacity
             style={styles.aiSuggestBtn}
             onPress={handleAnalyzeAiRecommendation}
@@ -360,7 +423,7 @@ export default function AutophagyCard({
                   { left: `${Math.max(0, Math.min(94, progressRatio * 94))}%` },
                 ]}
               >
-                <Text style={styles.sliderThumbText}>{targetHours}h</Text>
+                <Text style={styles.sliderThumbText}>{displayHours}h</Text>
               </View>
             </View>
           </View>
@@ -373,7 +436,7 @@ export default function AutophagyCard({
           </TouchableOpacity>
         </View>
 
-        {/* プリセットボタン */}
+        {/* プリセットボタン ＆ カスタム入力ボタン */}
         <View style={styles.presetRow}>
           {presetHours.map((hours) => (
             <TouchableOpacity
@@ -394,11 +457,112 @@ export default function AutophagyCard({
               </Text>
             </TouchableOpacity>
           ))}
+          <TouchableOpacity
+            style={styles.customInputBtn}
+            onPress={handleOpenCustomModal}
+          >
+            <Text style={styles.customInputBtnText}>✏️ カスタム</Text>
+          </TouchableOpacity>
         </View>
       </View>
+
+      {/* カスタム（手動）時間入力モーダル */}
+      <Modal
+        visible={isCustomModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsCustomModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={styles.modalContainer}
+            >
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>✏️ 絶食目標時間の手動設定</Text>
+                  <TouchableOpacity
+                    onPress={() => setIsCustomModalVisible(false)}
+                    style={styles.modalCloseBtn}
+                  >
+                    <Text style={styles.modalCloseBtnText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.modalSubText}>
+                  24時間以上の長期間絶食や、30分単位以外の任意時間を手動で自由に設定できます。
+                </Text>
+
+                {/* 時間・分入力フィールド */}
+                <View style={styles.inputRow}>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>時間 (Hours)</Text>
+                    <TextInput
+                      style={styles.numberInput}
+                      keyboardType="number-pad"
+                      value={customHoursText}
+                      onChangeText={setCustomHoursText}
+                      placeholder="16"
+                      placeholderTextColor="#64748b"
+                      maxLength={3}
+                    />
+                  </View>
+                  <Text style={styles.inputUnitText}>時間</Text>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>分 (Minutes)</Text>
+                    <TextInput
+                      style={styles.numberInput}
+                      keyboardType="number-pad"
+                      value={customMinutesText}
+                      onChangeText={setCustomMinutesText}
+                      placeholder="0"
+                      placeholderTextColor="#64748b"
+                      maxLength={2}
+                    />
+                  </View>
+                  <Text style={styles.inputUnitText}>分</Text>
+                </View>
+
+                {/* クイック選択タグ */}
+                <Text style={styles.quickLabel}>長期間絶食クイック選択:</Text>
+                <View style={styles.quickRow}>
+                  {[24, 28, 36, 48, 72].map((qh) => (
+                    <TouchableOpacity
+                      key={qh}
+                      style={styles.quickTag}
+                      onPress={() => handleSelectQuickCustom(qh)}
+                    >
+                      <Text style={styles.quickTagText}>{qh}時間</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* アクションボタン */}
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.cancelBtn}
+                    onPress={() => setIsCustomModalVisible(false)}
+                  >
+                    <Text style={styles.cancelBtnText}>キャンセル</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.saveBtn}
+                    onPress={handleSaveCustomHours}
+                  >
+                    <Text style={styles.saveBtnText}>保存して適用</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </View>
   );
 }
+
 
 const styles = StyleSheet.create({
   card: {
@@ -709,6 +873,157 @@ const styles = StyleSheet.create({
   },
   presetBtnTextActive: {
     color: '#34d399',
+    fontWeight: '700',
+  },
+  /* カスタム時間入力ボタン＆モーダル スタイル */
+  customInputBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: '#3b82f6',
+    borderWidth: 1,
+    borderColor: '#60a5fa',
+  },
+  customInputBtnText: {
+    fontSize: 11,
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContainer: {
+    width: '100%',
+    maxWidth: 380,
+  },
+  modalContent: {
+    backgroundColor: '#1e293b',
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#334155',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#f8fafc',
+  },
+  modalCloseBtn: {
+    padding: 4,
+  },
+  modalCloseBtnText: {
+    fontSize: 18,
+    color: '#94a3b8',
+    fontWeight: '700',
+  },
+  modalSubText: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginBottom: 16,
+    lineHeight: 16,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+    marginBottom: 16,
+  },
+  inputGroup: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  inputLabel: {
+    fontSize: 10,
+    color: '#94a3b8',
+    marginBottom: 4,
+  },
+  numberInput: {
+    backgroundColor: '#1e293b',
+    color: '#38bdf8',
+    fontSize: 22,
+    fontWeight: '800',
+    textAlign: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#38bdf8',
+    width: '80%',
+    paddingVertical: 6,
+  },
+  inputUnitText: {
+    fontSize: 14,
+    color: '#cbd5e1',
+    fontWeight: '700',
+    marginHorizontal: 8,
+  },
+  quickLabel: {
+    fontSize: 11,
+    color: '#94a3b8',
+    marginBottom: 8,
+  },
+  quickRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 20,
+  },
+  quickTag: {
+    backgroundColor: '#0f172a',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  quickTagText: {
+    fontSize: 12,
+    color: '#38bdf8',
+    fontWeight: '600',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  cancelBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#334155',
+  },
+  cancelBtnText: {
+    color: '#cbd5e1',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  saveBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#059669',
+  },
+  saveBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
     fontWeight: '700',
   },
 });
