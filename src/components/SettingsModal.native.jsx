@@ -36,6 +36,8 @@ export default function SettingsModal({
   setObsidianAutoSyncOnLaunch,
   syncStatusMsg,
   setSyncStatusMsg,
+  autophagyConfig = {},
+  setAutophagyConfig = () => {},
   onSaveSettings
 }) {
   const [activeTab, setActiveTab] = useState('goals'); // 'goals' | 'updates' | 'obsidian' | 'data'
@@ -202,6 +204,52 @@ export default function SettingsModal({
                         ⚡ DeepSeek V4 (高速)
                       </Text>
                     </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* オートファジー目標時間 ＆ 通知設定 */}
+                <View style={styles.sectionCard}>
+                  <Text style={styles.sectionTitle}>⌛ オートファジー絶食目標設定</Text>
+                  <Text style={styles.guideText}>
+                    設定した時間（例: 16時間）経過した際にオートファジー目標達成通知を発行します。
+                  </Text>
+                  
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: 8 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#333' }}>目標絶食時間 (時間)</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <TextInput
+                        style={[styles.textInput, { width: 70, textAlign: 'center', fontWeight: '700', fontSize: 16 }]}
+                        keyboardType="numeric"
+                        value={String(autophagyConfig.targetHours || 16)}
+                        onChangeText={(val) => {
+                          const num = parseInt(val, 10);
+                          setAutophagyConfig({
+                            ...autophagyConfig,
+                            targetHours: isNaN(num) || num <= 0 ? 16 : num,
+                          });
+                        }}
+                      />
+                      <Text style={{ fontSize: 14, marginLeft: 6, color: '#666', fontWeight: '600' }}>時間</Text>
+                    </View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+                    <View style={{ flex: 1, paddingRight: 10 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: '#333' }}>オートファジー絶食監視</Text>
+                      <Text style={{ fontSize: 11, color: '#777', marginTop: 2 }}>ONにするとタイマー計測と通知が有効になります</Text>
+                    </View>
+                    <Switch
+                      value={!!autophagyConfig.enabled}
+                      onValueChange={(val) => {
+                        setAutophagyConfig({
+                          ...autophagyConfig,
+                          enabled: val,
+                          startTime: val ? (autophagyConfig.startTime || new Date().toISOString()) : autophagyConfig.startTime,
+                        });
+                      }}
+                      trackColor={{ false: '#e0e0e0', true: '#c8e6c9' }}
+                      thumbColor={autophagyConfig.enabled ? '#4caf50' : '#9e9e9e'}
+                    />
                   </View>
                 </View>
 

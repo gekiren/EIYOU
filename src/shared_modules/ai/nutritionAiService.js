@@ -360,3 +360,83 @@ ${thinkingInstruction}
   };
 }
 
+/**
+ * 直近24時間の食事内容を分析し、理想的なオートファジー絶食時間（時間）をAI提案
+ */
+export async function recommendAutophagyTime({
+  last24hLogs = [],
+  userGoals = {},
+  geminiApiKey = '',
+  deepSeekApiKey = '',
+  workerProxyUrl = SECURE_WORKER_PROXY_URL,
+  preferredModel = 'gemini',
+  thinkingMode = 'quick'
+}) {
+  // 直近24時間の食事の要約
+  const totalCal = last24hLogs.reduce((acc, item) => acc + (Number(item.calories) || 0), 0);
+  const totalProtein = last24hLogs.reduce((acc, item) => acc + (Number(item.protein) || 0), 0);
+  const totalFat = last24hLogs.reduce((acc, item) => acc + (Number(item.fat) || 0), 0);
+  const totalCarbs = last24hLogs.reduce((acc, item) => acc + (Number(item.carbs) || 0), 0);
+  const mealCount = last24hLogs.length;
+
+  const mealSummaries = last24hLogs.map(item => 
+    `- ${item.date || ''} ${item.mealType || ''}: ${item.name || '食事'} (カロリー:${item.calories}kcal, P:${item.protein}g, F:${item.fat}g, C:${item.carbs}g)`
+  ).join('\n');
+
+  const promptText = `直近24時間の食事ログ分析とオートファジー絶食時間の提案:
+総摂取カロリー: ${totalCal} kcal (目標: ${userGoals.calories || 2000} kcal)
+タンパク質: ${totalProtein}g, 脂質: ${totalFat}g, 炭水化物: ${totalCarbs}g
+食事回数: ${mealCount}回
+食事詳細:
+${mealSummaries || '直近24時間の記録なし'}
+
+上記の内容を元に、理想的なオートファジー絶食時間(推奨時間: 12, 14, 16, 18, 20などの時間数)と、その根拠(reason)、絶食中のワンポイントアドバイス(advice)を以下のJSON形式で提示してください。
+{
+  "recommendedHours": 16,
+  "reason": "直近24時間の食事理由",
+  "advice": "絶食中アドバイス"
+}`;
+
+  // ルールベースのフォールバック計算関数
+  const calculateFallback = () => {
+    let rec = 16;
+    let r = '直近24時間の平均的な栄養バランスに基づき、標準的な16時間絶食を推奨します。';
+    if (totalCal > (userGoals.calories || 2000) * 1.15 || totalFat > 75) {
+      rec = 18;
+      r = '直近24時間の摂取カロリーまたは脂質がやや高めのため、18時間の絶食で消化器官を休め胃腸のデトックスを高めるのが最適です。';
+    } else if (totalCal < (userGoals.calories || 2000) * 0.7 && mealCount <= 2) {
+      rec = 14;
+      r = '直近の摂取カロリーが控えめなため、無効な体力低下を防ぐ14時間の絶食がバランス良好です。';
+    }
+    return {
+      recommendedHours: rec,
+      reason: r,
+      advice: '絶食中は水・無糖のお茶・ブラックコーヒーで十分な水分補給を心がけてください。'
+    };
+  };
+
+  try {
+    const aiResult = await analyzeMealTextWithAI({
+      textInput: promptText,
+      geminiApiKey,
+      deepSeekApiKey,
+      workerProxyUrl,
+      preferredModel,
+      thinkingMode
+    });
+
+    if (aiResult && aiResult.recommendedHours) {
+      return {
+        recommendedHours: Number(aiResult.recommendedHours) || 16,
+        reason: aiResult.reason || aiResult.advice || '直近の栄養状態に合わせて最適化されました。',
+        advice: aiResult.advice || '水分補給を欠かさずに行ってください。'
+      };
+    }
+  } catch (e) {
+    console.warn('[recommendAutophagyTime] AI analysis fallback:', e);
+  }
+
+  return calculateFallback();
+}
+
+

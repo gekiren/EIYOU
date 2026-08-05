@@ -10,6 +10,8 @@ import {
   Image,
   ActivityIndicator
 } from 'react-native';
+import { sanitizeNumberInput } from '../utils/inputSanitizer';
+import { triggerImpact } from '../utils/hapticsService';
 
 export default function PhotoRecordModal({
   visible,
@@ -304,7 +306,7 @@ export default function PhotoRecordModal({
                     style={styles.textInput}
                     keyboardType="numeric"
                     value={caloriesInput}
-                    onChangeText={setCaloriesInput}
+                    onChangeText={(t) => setCaloriesInput(sanitizeNumberInput(t))}
                   />
                 </View>
                 <View style={styles.inputCell}>
@@ -313,7 +315,7 @@ export default function PhotoRecordModal({
                     style={styles.textInput}
                     keyboardType="numeric"
                     value={proteinInput}
-                    onChangeText={setProteinInput}
+                    onChangeText={(t) => setProteinInput(sanitizeNumberInput(t))}
                   />
                 </View>
                 <View style={styles.inputCell}>
@@ -322,7 +324,7 @@ export default function PhotoRecordModal({
                     style={styles.textInput}
                     keyboardType="numeric"
                     value={fatInput}
-                    onChangeText={setFatInput}
+                    onChangeText={(t) => setFatInput(sanitizeNumberInput(t))}
                   />
                 </View>
                 <View style={styles.inputCell}>
@@ -331,7 +333,7 @@ export default function PhotoRecordModal({
                     style={styles.textInput}
                     keyboardType="numeric"
                     value={carbsInput}
-                    onChangeText={setCarbsInput}
+                    onChangeText={(t) => setCarbsInput(sanitizeNumberInput(t))}
                   />
                 </View>
                 <View style={styles.inputCell}>
@@ -340,7 +342,7 @@ export default function PhotoRecordModal({
                     style={styles.textInput}
                     keyboardType="numeric"
                     value={sodiumInput}
-                    onChangeText={setSodiumInput}
+                    onChangeText={(t) => setSodiumInput(sanitizeNumberInput(t))}
                   />
                 </View>
                 <View style={styles.inputCell}>
@@ -349,7 +351,7 @@ export default function PhotoRecordModal({
                     style={styles.textInput}
                     keyboardType="numeric"
                     value={fiberInput}
-                    onChangeText={setFiberInput}
+                    onChangeText={(t) => setFiberInput(sanitizeNumberInput(t))}
                   />
                 </View>
               </View>

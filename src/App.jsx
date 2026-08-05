@@ -30,6 +30,14 @@ import HistorySelectModal from './components/HistorySelectModal.native.jsx';
 import MdImportModal from './components/MdImportModal.native.jsx';
 import EditMealLogModal from './components/EditMealLogModal.native.jsx';
 import SettingsModal from './components/SettingsModal.native.jsx';
+import AutophagyCard from './components/AutophagyCard.native.jsx';
+import QuickFavoritesBar from './components/QuickFavoritesBar.native.jsx';
+import { triggerSuccess, triggerImpact, triggerWarning } from './utils/hapticsService.js';
+import {
+  loadAutophagyConfig,
+  saveAutophagyConfig,
+  scheduleAutophagyNotification
+} from './shared_modules/autophagy/autophagyService.js';
 
 if (typeof window !== 'undefined' && FileSystem && FileSystem.StorageAccessFramework) {
   window.expoFileSystemSAF = { StorageAccessFramework: FileSystem.StorageAccessFramework };
@@ -120,6 +128,15 @@ export default function App() {
   const [obsidianAutoSyncOnLaunch, setObsidianAutoSyncOnLaunch] = useState(true);
   const [syncStatusMsg, setSyncStatusMsg] = useState('');
 
+  // オートファジー設定ステート
+  const [autophagyConfig, setAutophagyConfig] = useState({
+    enabled: false,
+    targetHours: 16,
+    startTime: null,
+    notified: false,
+    autoSyncWithLastMeal: true,
+  });
+
   // データロード
   useEffect(() => {
     loadSettings();
@@ -146,6 +163,17 @@ export default function App() {
     setObsidianSaveMode(obsConfig.saveMode);
     setObsidianFolderName(obsConfig.folderName);
     setObsidianAutoSyncOnLaunch(obsConfig.autoSyncOnLaunch !== false);
+
+    const autoConfig = await loadAutophagyConfig();
+    setAutophagyConfig(autoConfig);
+  };
+
+  const handleUpdateAutophagyConfig = async (newConfig) => {
+    setAutophagyConfig(newConfig);
+    await saveAutophagyConfig(newConfig);
+    if (newConfig.enabled && newConfig.startTime) {
+      await scheduleAutophagyNotification(newConfig.startTime, newConfig.targetHours);
+    }
   };
 
   const handleToggleThinkingMode = async (mode) => {
@@ -177,6 +205,16 @@ export default function App() {
       return acc;
     }, { calories: 0, protein: 0, fat: 0, carbs: 0, sodium: 0, fiber: 0 });
   }, [mealLogs]);
+
+  // 直近24時間の食事ログ抽出
+  const last24hLogs = useMemo(() => {
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    return (allHistoryLogs || []).filter(item => {
+      const itemTime = item.createdAt ? new Date(item.createdAt).getTime() : new Date(item.date).getTime();
+      return !isNaN(itemTime) && (now - itemTime) <= dayMs;
+    });
+  }, [allHistoryLogs]);
 
   // 日付変更
   const changeDate = (days) => {
@@ -268,6 +306,7 @@ export default function App() {
     setSelectedImageUri(null);
     setBase64Image(null);
     setAiAnalysisResult(null);
+    triggerSuccess();
     loadMealLogs();
   };
 
@@ -308,6 +347,7 @@ export default function App() {
     setIsChatModalOpen(false);
     setChatInput('');
     setChatAnalyzedData(null);
+    triggerSuccess();
     loadMealLogs();
   };
 
@@ -318,6 +358,7 @@ export default function App() {
       date: selectedDate
     });
     setIsHistoryModalOpen(false);
+    triggerSuccess();
     loadMealLogs();
   };
 
@@ -337,18 +378,43 @@ export default function App() {
         memo: item.memo || ''
       });
     }
+    triggerSuccess();
+    loadMealLogs();
+  };
+
+  // お気に入りクイックタップでの追加
+  const handleQuickAddFavorite = async (favoriteItem) => {
+    const hour = new Date().getHours();
+    let currentMealType = 'lunch';
+    if (hour >= 5 && hour < 10) currentMealType = 'breakfast';
+    else if (hour >= 10 && hour < 15) currentMealType = 'lunch';
+    else if (hour >= 15 && hour < 21) currentMealType = 'dinner';
+    else currentMealType = 'snack';
+
+    const mealData = typeof favoriteItem === 'string'
+      ? { name: favoriteItem, calories: 0, protein: 0, fat: 0, carbs: 0, sodium: 0, fiber: 0 }
+      : favoriteItem;
+
+    await nutritionDb.addMealLog({
+      ...mealData,
+      date: selectedDate,
+      mealType: mealData.mealType || currentMealType,
+    });
+    triggerSuccess();
     loadMealLogs();
   };
 
   // お気に入りトグル
   const handleToggleFavorite = async (mealData) => {
     await nutritionDb.toggleFavorite(mealData);
+    triggerImpact('medium');
     loadFavorites();
   };
 
   // 食事削除
   const handleDeleteMeal = async (id) => {
     await nutritionDb.deleteMealLog(id);
+    triggerWarning();
     loadMealLogs();
   };
 
@@ -431,6 +497,17 @@ export default function App() {
         {/* 1. 今日の栄養サマリー ＆ カロリー/PFC/塩分/食物繊維進捗バー */}
         <NutritionSummaryCard totals={totals} userGoals={userGoals} mealLogs={mealLogs} />
 
+        {/* オートファジー絶食監視タイマーカード */}
+        <AutophagyCard
+          config={autophagyConfig}
+          onChangeConfig={handleUpdateAutophagyConfig}
+          lastMealTime={allHistoryLogs && allHistoryLogs.length > 0 ? (allHistoryLogs[0].createdAt || allHistoryLogs[0].date) : null}
+          last24hLogs={last24hLogs}
+          userGoals={userGoals}
+          preferredAiModel={preferredAiModel}
+          aiThinkingMode={aiThinkingMode}
+        />
+
         {/* 食事追加アクションボタン群 */}
         <View style={styles.actionGrid}>
           <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#3b82f6' }]} onPress={() => setIsPhotoModalOpen(true)}>
@@ -446,6 +523,12 @@ export default function App() {
             <Text style={styles.actionBtnText}>⭐ 履歴から</Text>
           </TouchableOpacity>
         </View>
+
+        {/* クイックお気に入りバー */}
+        <QuickFavoritesBar
+          favorites={favorites}
+          onSelectFavorite={handleQuickAddFavorite}
+        />
 
         {/* 2. 食事ログ一覧カード */}
         <MealLogList
@@ -573,6 +656,8 @@ export default function App() {
         setObsidianAutoSyncOnLaunch={setObsidianAutoSyncOnLaunch}
         syncStatusMsg={syncStatusMsg}
         setSyncStatusMsg={setSyncStatusMsg}
+        autophagyConfig={autophagyConfig}
+        setAutophagyConfig={handleUpdateAutophagyConfig}
         onSaveSettings={handleSaveSettings}
       />
 

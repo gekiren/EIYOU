@@ -8,6 +8,7 @@ import {
   ScrollView,
   TextInput
 } from 'react-native';
+import { sanitizeNumberInput } from '../utils/inputSanitizer';
 
 export default function EditMealLogModal({
   visible,
@@ -84,7 +85,7 @@ export default function EditMealLogModal({
                   style={styles.textInput}
                   keyboardType="numeric"
                   value={editCalories}
-                  onChangeText={setEditCalories}
+                  onChangeText={(t) => setEditCalories(sanitizeNumberInput(t))}
                 />
               </View>
 
@@ -94,7 +95,7 @@ export default function EditMealLogModal({
                   style={styles.textInput}
                   keyboardType="numeric"
                   value={editProtein}
-                  onChangeText={setEditProtein}
+                  onChangeText={(t) => setEditProtein(sanitizeNumberInput(t))}
                 />
               </View>
 
@@ -104,7 +105,7 @@ export default function EditMealLogModal({
                   style={styles.textInput}
                   keyboardType="numeric"
                   value={editFat}
-                  onChangeText={setEditFat}
+                  onChangeText={(t) => setEditFat(sanitizeNumberInput(t))}
                 />
               </View>
 
@@ -114,7 +115,7 @@ export default function EditMealLogModal({
                   style={styles.textInput}
                   keyboardType="numeric"
                   value={editCarbs}
-                  onChangeText={setEditCarbs}
+                  onChangeText={(t) => setEditCarbs(sanitizeNumberInput(t))}
                 />
               </View>
 
@@ -124,7 +125,7 @@ export default function EditMealLogModal({
                   style={styles.textInput}
                   keyboardType="numeric"
                   value={editSodium}
-                  onChangeText={setEditSodium}
+                  onChangeText={(t) => setEditSodium(sanitizeNumberInput(t))}
                 />
               </View>
 
@@ -134,7 +135,7 @@ export default function EditMealLogModal({
                   style={styles.textInput}
                   keyboardType="numeric"
                   value={editFiber}
-                  onChangeText={setEditFiber}
+                  onChangeText={(t) => setEditFiber(sanitizeNumberInput(t))}
                 />
               </View>
             </View>
