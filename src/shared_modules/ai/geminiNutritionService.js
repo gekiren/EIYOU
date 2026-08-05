@@ -1,6 +1,9 @@
+import { validateAndNormalizeNutritionResult } from '../../types/nutritionTypes';
+
 /**
  * Gemini 3.6 Flash API 直接呼出による栄養・食事解析モジュール
  */
+
 
 /**
  * 食事・食品画像からPFCバランスおよび栄養成分をGemini 3.6 Flashで解析
@@ -89,5 +92,5 @@ ${hintPrompt}
   const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!rawText) throw new Error('Gemini APIからのレスポンス本文が空です。');
 
-  return JSON.parse(rawText.trim());
+  return validateAndNormalizeNutritionResult(JSON.parse(rawText.trim()));
 }

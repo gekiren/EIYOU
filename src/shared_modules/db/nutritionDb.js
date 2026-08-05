@@ -1,5 +1,6 @@
 import { safeStorage } from '../storage/safeStorage.js';
 import { photoStorageService } from '../storage/photoStorageService.js';
+import { STORAGE_KEYS } from '../../config/constants.js';
 
 /**
  * 栄養管理アプリ用 ストレージデータベース (Native SafeStorage 一本化)
@@ -7,7 +8,7 @@ import { photoStorageService } from '../storage/photoStorageService.js';
  */
 class NutritionDb {
   async _getNativeLogs() {
-    const raw = await safeStorage.getItem('eiyou_meal_logs_v1', '[]');
+    const raw = await safeStorage.getItem(STORAGE_KEYS.MEAL_LOGS, '[]');
     try {
       return JSON.parse(raw) || [];
     } catch (e) {
@@ -16,11 +17,11 @@ class NutritionDb {
   }
 
   async _saveNativeLogs(logs) {
-    await safeStorage.setItem('eiyou_meal_logs_v1', JSON.stringify(logs));
+    await safeStorage.setItem(STORAGE_KEYS.MEAL_LOGS, JSON.stringify(logs));
   }
 
   async _getNativeFavorites() {
-    const raw = await safeStorage.getItem('eiyou_favorites_v1', '[]');
+    const raw = await safeStorage.getItem(STORAGE_KEYS.FAVORITES, '[]');
     try {
       return JSON.parse(raw) || [];
     } catch (e) {
@@ -29,7 +30,7 @@ class NutritionDb {
   }
 
   async _saveNativeFavorites(favs) {
-    await safeStorage.setItem('eiyou_favorites_v1', JSON.stringify(favs));
+    await safeStorage.setItem(STORAGE_KEYS.FAVORITES, JSON.stringify(favs));
   }
 
   /**

@@ -17,7 +17,7 @@ import * as FileSystem from 'expo-file-system';
 import { safeStorage } from './shared_modules/storage/safeStorage.js';
 import { nutritionDb } from './shared_modules/db/nutritionDb.js';
 import { analyzeMealPhoto, analyzeMealTextWithAI } from './shared_modules/ai/nutritionAiService.js';
-import { SECURE_WORKER_PROXY_URL } from './config/constants.js';
+import { SECURE_WORKER_PROXY_URL, STORAGE_KEYS, DEFAULT_USER_GOALS, DEFAULT_TOLERANCES } from './config/constants.js';
 import { obsidianSyncService } from './shared_modules/obsidian/obsidianSyncService.js';
 import { photoStorageService } from './shared_modules/storage/photoStorageService.js';
 
@@ -111,12 +111,7 @@ export default function App() {
   };
 
   const [userGoals, setUserGoals] = useState({
-    calories: 2200,
-    protein: 75,
-    fat: 60,
-    carbs: 280,
-    sodium: 7.0,
-    fiber: 20.0,
+    ...DEFAULT_USER_GOALS,
     tolerances: DEFAULT_TOLERANCES
   });
 
@@ -146,16 +141,16 @@ export default function App() {
   }, [selectedDate]);
 
   const loadSettings = async () => {
-    const savedGoals = await safeStorage.getItem('eiyou_user_goals', '');
+    const savedGoals = await safeStorage.getItem(STORAGE_KEYS.USER_GOALS, '');
     if (savedGoals) {
       try {
         setUserGoals(JSON.parse(savedGoals));
       } catch (e) {}
     }
-    const savedModel = await safeStorage.getItem('eiyou_preferred_ai_model', 'gemini');
+    const savedModel = await safeStorage.getItem(STORAGE_KEYS.AI_MODEL, 'gemini');
     setPreferredAiModel(savedModel);
 
-    const savedThinking = await safeStorage.getItem('eiyou_ai_thinking_mode', 'quick');
+    const savedThinking = await safeStorage.getItem(STORAGE_KEYS.AI_THINKING_MODE, 'quick');
     setAiThinkingMode(savedThinking);
 
     const obsConfig = await obsidianSyncService.getConfig();
@@ -179,7 +174,7 @@ export default function App() {
 
   const handleToggleThinkingMode = async (mode) => {
     setAiThinkingMode(mode);
-    await safeStorage.setItem('eiyou_ai_thinking_mode', mode);
+    await safeStorage.setItem(STORAGE_KEYS.AI_THINKING_MODE, mode);
   };
 
   const loadMealLogs = async () => {
@@ -458,8 +453,8 @@ export default function App() {
 
   // 設定保存
   const handleSaveSettings = async () => {
-    await safeStorage.setItem('eiyou_user_goals', JSON.stringify(userGoals));
-    await safeStorage.setItem('eiyou_preferred_ai_model', preferredAiModel);
+    await safeStorage.setItem(STORAGE_KEYS.USER_GOALS, JSON.stringify(userGoals));
+    await safeStorage.setItem(STORAGE_KEYS.AI_MODEL, preferredAiModel);
     await obsidianSyncService.saveConfig({
       enabled: obsidianEnabled,
       vaultUri: obsidianVaultUri,

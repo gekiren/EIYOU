@@ -1,6 +1,8 @@
 import { analyzeNutritionWithGemini } from './geminiNutritionService';
 import { extractNutritionTextWithOCR, parseNutritionOcrText } from '../ocr/nutritionOcrService';
 import { SECURE_WORKER_PROXY_URL } from '../../config/constants';
+import { validateAndNormalizeNutritionResult } from '../../types/nutritionTypes';
+
 
 /**
  * DeepSeek V4 API による栄養・食事画像解析
@@ -78,7 +80,7 @@ ${hintPrompt}
 
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content;
-  return JSON.parse(content.trim());
+  return validateAndNormalizeNutritionResult(JSON.parse(content.trim()));
 }
 
 /**
@@ -98,7 +100,8 @@ export async function analyzeNutritionWithWorkerProxy(base64Image, proxyUrl, ocr
     throw new Error(err.error || `Workerプロキシ通信エラー (${response.status})`);
   }
 
-  return await response.json();
+  const result = await response.json();
+  return validateAndNormalizeNutritionResult(result);
 }
 
 /**
@@ -182,7 +185,7 @@ export async function analyzeMealPhoto({
   // Step 3: オフラインローカルOCRフォールバック
   if (onProgress) onProgress('オフラインOCRルール解析で栄養表示を抽出中...');
   const fallbackData = parseNutritionOcrText(ocrResult.text);
-  return fallbackData;
+  return validateAndNormalizeNutritionResult(fallbackData);
 }
 
 /**
@@ -205,7 +208,7 @@ export async function analyzeMealTextWithAI({
     : '\n【解析モード：クイック (Quick Mode)】\n迅速に概算数値を返却してください。\n';
 
   const prompt = `
-あなたは管理栄養士AIです。ユーザーが入力した食事の記述「${textInput}」から、食べた料理・食品の名称、推定カロリー(kcal)、タンパク質(g)、脂質(g)、炭水化物(g)、塩分相当量(g)、食物繊維(g)、およびワンポイントアドバイスを算出し、以下のJSON形式で返却してください。
+あなた管理栄養士AIです。ユーザーが入力した食事の記述「${textInput}」から、食べた料理・食品の名称、推定カロリー(kcal)、タンパク質(g)、脂質(g)、炭水化物(g)、塩分相当量(g)、食物繊維(g)、およびワンポイントアドバイスを算出し、以下のJSON形式で返却してください。
 ${thinkingInstruction}
 【返却JSON形式】
 {
@@ -232,7 +235,7 @@ ${thinkingInstruction}
       });
       if (response.ok) {
         const data = await response.json();
-        if (data && data.calories !== undefined) return data;
+        if (data && data.calories !== undefined) return validateAndNormalizeNutritionResult(data);
       }
     } catch (e) {
       console.warn('Worker proxy text analysis failed, falling back to direct API keys:', e);
@@ -264,7 +267,7 @@ ${thinkingInstruction}
         if (response.ok) {
           const data = await response.json();
           const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (rawText) return JSON.parse(rawText.trim());
+          if (rawText) return validateAndNormalizeNutritionResult(JSON.parse(rawText.trim()));
         }
       } catch (e) {
         console.warn(`Gemini (${model}) text analysis error:`, e);
@@ -292,7 +295,7 @@ ${thinkingInstruction}
       if (response.ok) {
         const data = await response.json();
         const content = data.choices?.[0]?.message?.content;
-        if (content) return JSON.parse(content.trim());
+        if (content) return validateAndNormalizeNutritionResult(JSON.parse(content.trim()));
       }
     } catch (e) {
       console.warn('DeepSeek text analysis error:', e);
@@ -347,7 +350,7 @@ ${thinkingInstruction}
   }
 
   const words = textInput.split(/[\s,、]+/);
-  return {
+  return validateAndNormalizeNutritionResult({
     mealName: textInput.substring(0, 30),
     calories: baseCal,
     protein: baseP,
@@ -357,7 +360,7 @@ ${thinkingInstruction}
     fiber: Number(baseFiber.toFixed(1)),
     ingredients: words,
     advice: 'オフライン推定結果です。AIプロキシ/APIキーを設定すると高精度な自動分析が可能です。'
-  };
+  });
 }
 
 /**

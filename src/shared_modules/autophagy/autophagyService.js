@@ -1,4 +1,5 @@
 import { safeStorage } from '../storage/safeStorage.js';
+import { STORAGE_KEYS } from '../../config/constants.js';
 
 let Notifications = null;
 try {
@@ -16,7 +17,7 @@ try {
   console.warn('[autophagyService] expo-notifications module not loaded:', e.message);
 }
 
-const AUTOPHAGY_STORAGE_KEY = 'eiyou_autophagy_config_v1';
+const AUTOPHAGY_STORAGE_KEY = STORAGE_KEYS.AUTOPHAGY_CONFIG;
 
 export const DEFAULT_AUTOPHAGY_CONFIG = {
   enabled: false,

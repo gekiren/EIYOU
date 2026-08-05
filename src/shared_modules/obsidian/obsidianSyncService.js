@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system';
 import { safeStorage } from '../storage/safeStorage.js';
 import { nutritionDb } from '../db/nutritionDb.js';
+import { STORAGE_KEYS } from '../../config/constants.js';
 
 // ファイル名・パス用サニタイズ関数
 export function sanitizeFileName(name) {
@@ -13,7 +14,7 @@ export function sanitizeFileName(name) {
  */
 class ObsidianSyncService {
   constructor() {
-    this.STORAGE_KEY_CONFIG = 'eiyou_obsidian_config_v1';
+    this.STORAGE_KEY_CONFIG = STORAGE_KEYS.OBSIDIAN_CONFIG;
   }
 
   /**
