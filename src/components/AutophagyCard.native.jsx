@@ -147,16 +147,19 @@ export default function AutophagyCard({
   };
 
   // PanResponder によるスワイプ調整 (スワイプ中はローカル表示のみ更新)
+  const sliderTrackRef = useRef(null);
+  const containerPageXRef = useRef(0);
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (evt) => {
         isDraggingRef.current = true;
-        updateHoursFromTouchLocal(evt.nativeEvent.locationX);
+        updateHoursFromTouchLocal(evt.nativeEvent);
       },
       onPanResponderMove: (evt) => {
-        updateHoursFromTouchLocal(evt.nativeEvent.locationX);
+        updateHoursFromTouchLocal(evt.nativeEvent);
       },
       onPanResponderRelease: () => {
         isDraggingRef.current = false;
@@ -177,9 +180,16 @@ export default function AutophagyCard({
     })
   ).current;
 
-  const updateHoursFromTouchLocal = (locationX) => {
+  const updateHoursFromTouchLocal = (nativeEvent) => {
     const w = sliderWidthRef.current || 240;
-    const ratio = Math.min(1, Math.max(0, locationX / w));
+    let touchX = nativeEvent.locationX;
+
+    // もし pageX とコンテナ絶対座標が取得できている場合はそちらを優先
+    if (nativeEvent.pageX !== undefined && containerPageXRef.current > 0) {
+      touchX = nativeEvent.pageX - containerPageXRef.current;
+    }
+
+    const ratio = Math.min(1, Math.max(0, touchX / w));
     const rawHours = MIN_HOURS + ratio * (MAX_HOURS - MIN_HOURS);
     const steppedHours = Math.round(rawHours * 2) / 2; // 0.5単位に丸め
     if (steppedHours !== targetHoursRef.current) {
@@ -402,15 +412,23 @@ export default function AutophagyCard({
           </TouchableOpacity>
 
           <View
+            ref={sliderTrackRef}
             style={styles.sliderTrackContainer}
             onLayout={(e) => {
               const w = e.nativeEvent.layout.width;
               setSliderWidth(w);
               sliderWidthRef.current = w;
+              if (sliderTrackRef.current && sliderTrackRef.current.measure) {
+                sliderTrackRef.current.measure((x, y, width, height, pageX) => {
+                  if (pageX) {
+                    containerPageXRef.current = pageX;
+                  }
+                });
+              }
             }}
             {...panResponder.panHandlers}
           >
-            <View style={styles.sliderTrackBg}>
+            <View style={styles.sliderTrackBg} pointerEvents="none">
               <View
                 style={[
                   styles.sliderTrackFill,
