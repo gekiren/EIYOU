@@ -19,6 +19,7 @@ import { nutritionDb } from './shared_modules/db/nutritionDb.js';
 import { analyzeMealPhoto, analyzeMealTextWithAI } from './shared_modules/ai/nutritionAiService.js';
 import { SECURE_WORKER_PROXY_URL } from './config/constants.js';
 import { obsidianSyncService } from './shared_modules/obsidian/obsidianSyncService.js';
+import { photoStorageService } from './shared_modules/storage/photoStorageService.js';
 
 // 分割コンポーネント
 import HistoryChartCard from './components/HistoryChartCard.native.jsx';
@@ -288,6 +289,9 @@ export default function App() {
     }
     const mult = recordMode === 'ocr' ? portionPercentage / 100 : portionMultiplier;
 
+    // 写真のローカル永続化保存
+    const persistentPhotoUrl = await photoStorageService.savePhoto(selectedImageUri);
+
     await nutritionDb.addMealLog({
       date: selectedDate,
       mealType,
@@ -298,7 +302,7 @@ export default function App() {
       carbs: Number(((Number(carbsInput) || 0) * mult).toFixed(1)),
       sodium: Number(((Number(sodiumInput) || 0) * mult).toFixed(1)),
       fiber: Number(((Number(fiberInput) || 0) * mult).toFixed(1)),
-      photoUrl: selectedImageUri || '',
+      photoUrl: persistentPhotoUrl || '',
       memo: aiAnalysisResult?.advice || ''
     });
 

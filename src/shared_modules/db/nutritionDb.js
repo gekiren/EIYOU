@@ -1,37 +1,11 @@
-import Dexie from 'dexie';
 import { safeStorage } from '../storage/safeStorage.js';
-
-const isIndexedDBSupported = typeof window !== 'undefined' && 'indexedDB' in window;
+import { photoStorageService } from '../storage/photoStorageService.js';
 
 /**
- * 栄養管理アプリ用 ハイブリッドデータベース
- * Web: Dexie.js (IndexedDB)
- * Native: SafeStorage (AsyncStorage / Key-Value)
+ * 栄養管理アプリ用 ストレージデータベース (Native SafeStorage 一本化)
+ * AsyncStorage / SafeStorage による超軽量・安全なローカル永続化
  */
-class HybridNutritionDb {
-  constructor() {
-    this.isWeb = isIndexedDBSupported;
-    if (this.isWeb) {
-      try {
-        this.dexieDb = new Dexie('NutritionAppDB');
-        this.dexieDb.version(1).stores({
-          mealLogs: '++id, date, mealType, createdAt',
-          foods: '++id, name, createdAt',
-          userGoals: '++id, date'
-        });
-        this.dexieDb.version(2).stores({
-          mealLogs: '++id, date, mealType, createdAt',
-          foods: '++id, name, createdAt',
-          userGoals: '++id, date',
-          favorites: '++id, name, createdAt'
-        });
-      } catch (e) {
-        console.warn('[HybridNutritionDb] Dexie init failed, falling back to safeStorage', e);
-        this.isWeb = false;
-      }
-    }
-  }
-
+class NutritionDb {
   async _getNativeLogs() {
     const raw = await safeStorage.getItem('eiyou_meal_logs_v1', '[]');
     try {
@@ -62,13 +36,6 @@ class HybridNutritionDb {
    * お気に入りリストの取得
    */
   async getFavorites() {
-    if (this.isWeb && this.dexieDb) {
-      try {
-        return await this.dexieDb.favorites.orderBy('createdAt').reverse().toArray();
-      } catch (e) {
-        console.warn('Dexie getFavorites error:', e);
-      }
-    }
     return await this._getNativeFavorites();
   }
 
@@ -78,33 +45,6 @@ class HybridNutritionDb {
   async toggleFavorite(mealData) {
     const nameToMatch = (mealData.name || '').trim().toLowerCase();
     if (!nameToMatch) return false;
-
-    if (this.isWeb && this.dexieDb) {
-      try {
-        const existing = await this.dexieDb.favorites.where('name').equals(mealData.name).first();
-        if (existing) {
-          await this.dexieDb.favorites.delete(existing.id);
-          return false; // 解除された
-        } else {
-          await this.dexieDb.favorites.add({
-            name: mealData.name,
-            mealType: mealData.mealType || 'lunch',
-            calories: Number(mealData.calories) || 0,
-            protein: Number(mealData.protein) || 0,
-            fat: Number(mealData.fat) || 0,
-            carbs: Number(mealData.carbs) || 0,
-            sodium: Number(mealData.sodium) || 0,
-            fiber: Number(mealData.fiber) || 0,
-            photoUrl: mealData.photoUrl || '',
-            memo: mealData.memo || '',
-            createdAt: new Date().toISOString()
-          });
-          return true; // 登録された
-        }
-      } catch (e) {
-        console.warn('Dexie toggleFavorite error:', e);
-      }
-    }
 
     const favs = await this._getNativeFavorites();
     const index = favs.findIndex((f) => (f.name || '').trim().toLowerCase() === nameToMatch);
@@ -152,11 +92,6 @@ class HybridNutritionDb {
       createdAt: new Date().toISOString()
     };
 
-    if (this.isWeb && this.dexieDb) {
-      const { id, ...rest } = logItem;
-      return await this.dexieDb.mealLogs.add(rest);
-    }
-
     const logs = await this._getNativeLogs();
     logs.push(logItem);
     await this._saveNativeLogs(logs);
@@ -167,21 +102,20 @@ class HybridNutritionDb {
    * 特定日付の食事ログ取得
    */
   async getMealLogsByDate(dateStr) {
-    if (this.isWeb && this.dexieDb) {
-      return await this.dexieDb.mealLogs.where('date').equals(dateStr).toArray();
-    }
     const logs = await this._getNativeLogs();
     return logs.filter(item => item.date === dateStr);
   }
 
   /**
-   * 食事ログの削除
+   * 食事ログの削除（連動写真ファイルの自動削除含む）
    */
   async deleteMealLog(id) {
-    if (this.isWeb && this.dexieDb) {
-      return await this.dexieDb.mealLogs.delete(id);
-    }
     const logs = await this._getNativeLogs();
+    const targetLog = logs.find(item => item.id === id);
+    if (targetLog && targetLog.photoUrl) {
+      // 登録されていたローカル写真ファイルを削除
+      await photoStorageService.deletePhoto(targetLog.photoUrl);
+    }
     const filtered = logs.filter(item => item.id !== id);
     await this._saveNativeLogs(filtered);
   }
@@ -190,12 +124,13 @@ class HybridNutritionDb {
    * 食事ログの更新
    */
   async updateMealLog(id, updateData) {
-    if (this.isWeb && this.dexieDb) {
-      return await this.dexieDb.mealLogs.update(id, updateData);
-    }
     const logs = await this._getNativeLogs();
     const index = logs.findIndex(item => item.id === id);
     if (index !== -1) {
+      const oldPhoto = logs[index].photoUrl;
+      if (oldPhoto && updateData.photoUrl && oldPhoto !== updateData.photoUrl) {
+        await photoStorageService.deletePhoto(oldPhoto);
+      }
       logs[index] = { ...logs[index], ...updateData };
       await this._saveNativeLogs(logs);
     }
@@ -205,13 +140,6 @@ class HybridNutritionDb {
    * 全食事ログの取得
    */
   async getAllMealLogs() {
-    if (this.isWeb && this.dexieDb) {
-      try {
-        return await this.dexieDb.mealLogs.orderBy('createdAt').reverse().toArray();
-      } catch (e) {
-        console.warn('Dexie getAllMealLogs error:', e);
-      }
-    }
     const logs = await this._getNativeLogs();
     if (!Array.isArray(logs)) return [];
     return logs.sort((a, b) => {
@@ -224,4 +152,5 @@ class HybridNutritionDb {
   }
 }
 
-export const nutritionDb = new HybridNutritionDb();
+export const nutritionDb = new NutritionDb();
+

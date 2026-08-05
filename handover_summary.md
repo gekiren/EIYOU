@@ -1,37 +1,36 @@
 # 📋 引き継ぎサマリー (Handover Summary)
 
-**作成日時**: 2026-08-05 23:40
+**作成日時**: 2026-08-05 23:45
 **対象プロジェクト**: EIYOU (栄養記録・管理アプリ)
 **作業ブランチ**: `staging`
 
 ---
 
 ## 1. セッションの概要と決定事項
-本セッションでは、**「B. UI / UX・インタラクションの改善」**に関する詳細な実装計画を作成しました。
+本セッションでは、**「C. データ・ストレージ・パフォーマンスの改善」**に関する詳細な実装計画を作成しました。
 実行は次の会話セッションで `staging` ブランチ上で順次進めます。
 
 ---
 
 ## 2. 次のセッションで実施するタスク
 
-「B. UI / UX・インタラクションの改善」を `staging` ブランチ上で順次実装し、Android 端末向けに OTA (EAS Update) 配信を適用します。
+「C. データ・ストレージ・パフォーマンスの改善」を `staging` ブランチ上で順次実装し、Android 端末向けに OTA (EAS Update) 配信を適用します。
 
 ### 実装予定の機能3点
 
-1. **⭐ お気に入り・よく食べるメニューのクイックタップエリア（横スクロールチップ）追加**
-   - メイン画面のアクションボタン直下に `<QuickFavoritesBar />` を追加。
-   - お気に入り登録されているメニューをアイコン付きスクロールチップで表示し、1タップで本日のログに即時追加。
-   - 対象ファイル: [`src/components/QuickFavoritesBar.native.jsx`](file:///c:/EIYOU/src/components/QuickFavoritesBar.native.jsx) (新規), [`src/App.jsx`](file:///c:/EIYOU/src/App.jsx)
+1. **📁 食事写真データの `expo-file-system` 永続化とAsyncStorage容量圧迫リスクの完全排除**
+   - 写真保存サービス [`photoStorageService.js`](file:///c:/EIYOU/src/shared_modules/storage/photoStorageService.js) の新設。
+   - 撮影/選択した食事画像を `FileSystem.documentDirectory + 'meal_photos/'` に保存し、DBにはローカルファイルパス（`file:///...`）のみを保存する仕様へ統一。
+   - 対象ファイル: `photoStorageService.js` (新規), `nutritionDb.js`, `App.jsx`
 
-2. **⌨️ 数値入力アシスト（全角→半角自動変換 ＆ リアルタイムバリデーション）**
-   - 入力モジュール [`src/utils/inputSanitizer.js`](file:///c:/EIYOU/src/utils/inputSanitizer.js) の新設。
-   - 全角数字（例: `１２０．５`）を自動的に半角数値文字列（`120.5`）へ変換し、負の数やフォーマットエラーを防止。
-   - 対象ファイル: 各入力・編集モーダル (`PhotoRecordModal.native.jsx`, `EditMealLogModal.native.jsx` 等)
+2. **🧹 Webレガシーコード（Dexie.js/IndexedDB）の完全除去と不要依存パッケージの削除**
+   - `nutritionDb.js` から Dexie.js / IndexedDB 判定コードを削除し、Native (`safeStorage`) 一本化。
+   - `package.json` から使用されていない Web 用ライブラリ (`dexie`, `recharts`, `canvas-confetti`, `vite`, `react-dom`, `react-native-web` 等) を削除 (`npm uninstall`)。
+   - 対象ファイル: [`src/shared_modules/db/nutritionDb.js`](file:///c:/EIYOU/src/shared_modules/db/nutritionDb.js), [`package.json`](file:///c:/EIYOU/package.json)
 
-3. **📳 触覚フィードバック（`expo-haptics`）によるマイクロインタラクション演出強化**
-   - Haptics モジュール [`src/utils/hapticsService.js`](file:///c:/EIYOU/src/utils/hapticsService.js) の新設。
-   - 食事記録保存成功（Success）、お気に入り切替（Medium impact）、ログ削除（Warning notification）に心地よい端末振動演出を導入。
-   - 対象ファイル: `MealLogList.native.jsx`, `PhotoRecordModal.native.jsx`, `ChatRecordModal.native.jsx`, `App.jsx`
+3. **📢 Obsidian連携の同期フィードバック（トースト通知）および非同期処理の軽量化**
+   - `obsidianSyncService` による同期成功・失敗時の通知表示・フィードバックを強化。
+   - 対象ファイル: [`src/shared_modules/obsidian/obsidianSyncService.js`](file:///c:/EIYOU/src/shared_modules/obsidian/obsidianSyncService.js)
 
 ---
 

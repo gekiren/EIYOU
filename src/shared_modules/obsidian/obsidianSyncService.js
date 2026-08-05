@@ -1,3 +1,4 @@
+import * as FileSystem from 'expo-file-system';
 import { safeStorage } from '../storage/safeStorage.js';
 import { nutritionDb } from '../db/nutritionDb.js';
 
@@ -197,7 +198,6 @@ tags:
     }
 
     if (existingContent.includes(sectionHeader)) {
-      // 既存のセクションヘッダーから次の ## ヘッダーまたは文末までを置換
       const headerIndex = existingContent.indexOf(sectionHeader);
       const nextHeaderIndex = existingContent.indexOf('\n## ', headerIndex + sectionHeader.length);
       if (nextHeaderIndex !== -1) {
@@ -210,7 +210,6 @@ tags:
         return existingContent.substring(0, headerIndex) + newSection;
       }
     } else {
-      // 文末に追記
       return existingContent.trimEnd() + '\n\n' + newSection;
     }
   }
@@ -220,7 +219,7 @@ tags:
    */
   async syncDateLogs(dateStr, userGoals = {}) {
     const config = await this.getConfig();
-    if (!config.enabled) return { success: false, reason: 'disabled' };
+    if (!config.enabled) return { success: false, reason: 'disabled', message: 'Obsidian連携が無効です。' };
 
     const logs = await nutritionDb.getMealLogsByDate(dateStr);
     const safeFolderName = sanitizeFileName(config.folderName) || 'EIYOU';
@@ -233,7 +232,7 @@ tags:
       fileName = `${safeFolderName}/EIYOU_${safeDate}.md`;
       content = this.generateMarkdownForDate(dateStr, logs, userGoals);
     } else if (config.saveMode === 'append') {
-      fileName = `Daily/${safeDate}.md`; // または Vault ルートへフォールバック
+      fileName = `Daily/${safeDate}.md`;
       content = this.generateDailyAppendSection(dateStr, logs);
     } else if (config.saveMode === 'individual') {
       const allLogs = await nutritionDb.getAllMealLogs();
@@ -255,7 +254,7 @@ tags:
    */
   async syncAllMealLogs(userGoals = {}) {
     const config = await this.getConfig();
-    if (!config.enabled) return { success: false, reason: 'disabled' };
+    if (!config.enabled) return { success: false, reason: 'disabled', message: 'Obsidian連携が無効です。' };
 
     const allLogs = await nutritionDb.getAllMealLogs();
     if (config.saveMode === 'individual') {
@@ -280,7 +279,12 @@ tags:
       if (res.success) count++;
     }
 
-    return { success: true, count, totalDates: dates.length };
+    return {
+      success: true,
+      count,
+      totalDates: dates.length,
+      message: `Obsidianへ${count}/${dates.length}日分の記録を同期しました。`
+    };
   }
 
   /**
@@ -290,12 +294,10 @@ tags:
     const safePath = relativePath.split('/').map(sanitizeFileName).join('/');
 
     // 1. React Native / Expo (StorageAccessFramework SAF)
-    if (typeof window !== 'undefined' && window.expoFileSystemSAF) {
+    const StorageAccessFramework = FileSystem.StorageAccessFramework || (typeof window !== 'undefined' && window.expoFileSystemSAF?.StorageAccessFramework);
+    if (StorageAccessFramework && config.vaultUri) {
       try {
-        const { StorageAccessFramework } = window.expoFileSystemSAF;
         const vaultUri = config.vaultUri;
-        if (!vaultUri) throw new Error('Vault folder URI is not selected');
-
         const pathParts = safePath.split('/');
         const fileName = pathParts.pop();
         let targetDirUri = vaultUri;
@@ -306,7 +308,6 @@ tags:
           try {
             targetDirUri = await StorageAccessFramework.createDirectoryAsync(vaultUri, subDirName);
           } catch (e) {
-            // 作成済みの場合は既存フォルダURIの検索または Vault ルートへのフォールバック
             targetDirUri = vaultUri; // フォールバック
           }
         }
@@ -352,9 +353,9 @@ tags:
         }
 
         await StorageAccessFramework.writeAsStringAsync(fileUri, finalContent, { encoding: 'utf8' });
-        return { success: true, path: safePath, target: 'SAF' };
+        return { success: true, path: safePath, target: 'SAF', message: `Obsidian Vault に [${fileName}] を保存しました。` };
       } catch (err) {
-        console.warn('[ObsidianSync] SAF write failed, falling back to root/web download', err);
+        console.warn('[ObsidianSync] SAF write failed, falling back', err);
       }
     }
 
