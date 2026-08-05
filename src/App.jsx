@@ -493,21 +493,7 @@ export default function App() {
       </View>
 
       <ScrollView contentContainerStyle={styles.mainScroll} showsVerticalScrollIndicator={false}>
-        {/* 1. 今日の栄養サマリー ＆ カロリー/PFC/塩分/食物繊維進捗バー */}
-        <NutritionSummaryCard totals={totals} userGoals={userGoals} mealLogs={mealLogs} />
-
-        {/* オートファジー絶食監視タイマーカード */}
-        <AutophagyCard
-          config={autophagyConfig}
-          onChangeConfig={handleUpdateAutophagyConfig}
-          lastMealTime={allHistoryLogs && allHistoryLogs.length > 0 ? (allHistoryLogs[0].createdAt || allHistoryLogs[0].date) : null}
-          last24hLogs={last24hLogs}
-          userGoals={userGoals}
-          preferredAiModel={preferredAiModel}
-          aiThinkingMode={aiThinkingMode}
-        />
-
-        {/* 食事追加アクションボタン群 */}
+        {/* 食事追加アクションボタン群 (起動してすぐ記録可能) */}
         <View style={styles.actionGrid}>
           <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#3b82f6' }]} onPress={() => setIsPhotoModalOpen(true)}>
             <Text style={styles.actionBtnText}>📷 写真記録</Text>
@@ -522,6 +508,9 @@ export default function App() {
             <Text style={styles.actionBtnText}>⭐ 履歴から</Text>
           </TouchableOpacity>
         </View>
+
+        {/* 1. 今日の栄養サマリー ＆ カロリー/PFC/塩分/食物繊維進捗バー */}
+        <NutritionSummaryCard totals={totals} userGoals={userGoals} mealLogs={mealLogs} />
 
         {/* クイックお気に入りバー */}
         <QuickFavoritesBar
@@ -541,6 +530,17 @@ export default function App() {
 
         {/* 3. 栄養摂取推移グラフ */}
         <HistoryChartCard allLogs={allHistoryLogs} userGoals={userGoals} />
+
+        {/* 4. オートファジー絶食監視タイマーカード (最下部に配置) */}
+        <AutophagyCard
+          config={autophagyConfig}
+          onChangeConfig={handleUpdateAutophagyConfig}
+          lastMealTime={allHistoryLogs && allHistoryLogs.length > 0 ? (allHistoryLogs[0].createdAt || allHistoryLogs[0].date) : null}
+          last24hLogs={last24hLogs}
+          userGoals={userGoals}
+          preferredAiModel={preferredAiModel}
+          aiThinkingMode={aiThinkingMode}
+        />
       </ScrollView>
 
       {/* --- モーダル群 --- */}

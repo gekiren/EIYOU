@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -7,9 +7,11 @@ import {
   Switch,
   Alert,
   ActivityIndicator,
+  PanResponder,
 } from 'react-native';
 import { calculateAutophagyStatus } from '../shared_modules/autophagy/autophagyService.js';
 import { recommendAutophagyTime } from '../shared_modules/ai/nutritionAiService.js';
+import { triggerImpact } from '../utils/hapticsService.js';
 
 export default function AutophagyCard({
   config = {},
@@ -34,6 +36,18 @@ export default function AutophagyCard({
   // AI最適化提案用ステート
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiRecommendation, setAiRecommendation] = useState(null);
+
+  // スライダー幅計測用
+  const [sliderWidth, setSliderWidth] = useState(240);
+  const sliderWidthRef = useRef(240);
+  const targetHoursRef = useRef(targetHours);
+  const MIN_HOURS = 8.0;
+  const MAX_HOURS = 36.0;
+  const STEP = 0.5;
+
+  useEffect(() => {
+    targetHoursRef.current = targetHours;
+  }, [targetHours]);
 
   // 1秒ごとに絶食カウントダウン・状態更新
   useEffect(() => {
@@ -63,6 +77,7 @@ export default function AutophagyCard({
 
   // オートファジーON/OFF 切り替え
   const handleToggleEnabled = (val) => {
+    triggerImpact('medium');
     if (val) {
       const newStart = startTime || lastMealTime || new Date().toISOString();
       onChangeConfig({
@@ -81,6 +96,7 @@ export default function AutophagyCard({
 
   // 手動で絶食スタート時刻を「現在時刻」にリセット
   const handleResetStartNow = () => {
+    triggerImpact('medium');
     const nowIso = new Date().toISOString();
     onChangeConfig({
       ...config,
@@ -92,15 +108,59 @@ export default function AutophagyCard({
 
   // 目標時間の変更
   const handleSelectTargetHours = (hours) => {
-    onChangeConfig({
-      ...config,
-      targetHours: hours,
-      notified: false,
-    });
+    const clamped = Math.min(MAX_HOURS, Math.max(MIN_HOURS, Math.round(hours * 2) / 2));
+    if (clamped !== targetHours) {
+      triggerImpact('light');
+      onChangeConfig({
+        ...config,
+        targetHours: clamped,
+        notified: false,
+      });
+    }
+  };
+
+  // 0.5時間刻みのインクリメント/デクリメント
+  const handleStepHours = (delta) => {
+    const next = targetHours + delta;
+    handleSelectTargetHours(next);
+  };
+
+  // PanResponder によるスワイプ調整
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt) => {
+        updateHoursFromTouch(evt.nativeEvent.locationX);
+      },
+      onPanResponderMove: (evt) => {
+        updateHoursFromTouch(evt.nativeEvent.locationX);
+      },
+      onPanResponderRelease: () => {
+        triggerImpact('medium');
+      },
+    })
+  ).current;
+
+  const updateHoursFromTouch = (locationX) => {
+    const w = sliderWidthRef.current || 240;
+    const ratio = Math.min(1, Math.max(0, locationX / w));
+    const rawHours = MIN_HOURS + ratio * (MAX_HOURS - MIN_HOURS);
+    const steppedHours = Math.round(rawHours * 2) / 2; // 0.5単位に丸め
+    if (steppedHours !== targetHoursRef.current) {
+      targetHoursRef.current = steppedHours;
+      triggerImpact('selection');
+      onChangeConfig({
+        ...config,
+        targetHours: steppedHours,
+        notified: false,
+      });
+    }
   };
 
   // AI最適化提案の実行
   const handleAnalyzeAiRecommendation = async () => {
+    triggerImpact('light');
     setIsAnalyzing(true);
     setAiRecommendation(null);
     try {
@@ -124,7 +184,19 @@ export default function AutophagyCard({
     Alert.alert('🎯 目標適用完了', `AIが提案した ${hours}時間をオートファジー目標時間として設定しました！`);
   };
 
-  const presetHours = [12, 14, 16, 18, 20];
+  const presetHours = [12, 14, 16, 18, 20, 24];
+
+  // 時間のフォーマット補助 (例: 16.5 -> 16時間30分)
+  const formatHoursText = (h) => {
+    const whole = Math.floor(h);
+    const mins = Math.round((h - whole) * 60);
+    if (mins === 0) {
+      return `${whole}時間`;
+    }
+    return `${whole}時間${mins}分`;
+  };
+
+  const progressRatio = Math.min(1, Math.max(0, (targetHours - MIN_HOURS) / (MAX_HOURS - MIN_HOURS)));
 
   return (
     <View style={styles.card}>
@@ -134,14 +206,16 @@ export default function AutophagyCard({
           <Text style={styles.icon}>⌛</Text>
           <View>
             <Text style={styles.title}>オートファジー監視タイマー</Text>
-            <Text style={styles.subtitle}>目標絶食時間: {targetHours} 時間</Text>
+            <Text style={styles.subtitle}>
+              目標絶食時間: <Text style={styles.targetHoursHighlight}>{targetHours}h</Text> ({formatHoursText(targetHours)})
+            </Text>
           </View>
         </View>
         <Switch
           value={enabled}
           onValueChange={handleToggleEnabled}
-          trackColor={{ false: '#e0e0e0', true: '#c8e6c9' }}
-          thumbColor={enabled ? '#4caf50' : '#9e9e9e'}
+          trackColor={{ false: '#334155', true: '#059669' }}
+          thumbColor={enabled ? '#10b981' : '#94a3b8'}
         />
       </View>
 
@@ -160,7 +234,7 @@ export default function AutophagyCard({
           <View
             style={[
               styles.phaseBadge,
-              { backgroundColor: status.phaseColor || '#2196f3' },
+              { backgroundColor: status.phaseColor || '#3b82f6' },
             ]}
           >
             <Text style={styles.phaseBadgeText}>{status.currentPhase}</Text>
@@ -174,7 +248,7 @@ export default function AutophagyCard({
                 styles.progressFill,
                 {
                   width: `${status.progressPercent}%`,
-                  backgroundColor: status.phaseColor || '#4caf50',
+                  backgroundColor: status.phaseColor || '#10b981',
                 },
               ]}
             />
@@ -219,10 +293,10 @@ export default function AutophagyCard({
         </View>
       )}
 
-      {/* AI最適化提案 ＆ 目標絶食時間選択 */}
+      {/* AI最適化提案 ＆ 目標絶食時間スワイプ調整 */}
       <View style={styles.targetSelector}>
         <View style={styles.selectorHeader}>
-          <Text style={styles.selectorLabel}>目標絶食時間の設定:</Text>
+          <Text style={styles.selectorLabel}>目標絶食時間の調整 (30分単位スワイプ):</Text>
           <TouchableOpacity
             style={styles.aiSuggestBtn}
             onPress={handleAnalyzeAiRecommendation}
@@ -231,7 +305,7 @@ export default function AutophagyCard({
             {isAnalyzing ? (
               <ActivityIndicator size="small" color="#ffffff" />
             ) : (
-              <Text style={styles.aiSuggestBtnText}>🤖 AI最適化提案</Text>
+              <Text style={styles.aiSuggestBtnText}>🤖 AI提案</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -255,6 +329,51 @@ export default function AutophagyCard({
           </View>
         )}
 
+        {/* 30分単位 スワイプ調整用インタラクティブスライダー */}
+        <View style={styles.swipeControlContainer}>
+          <TouchableOpacity
+            style={styles.stepBtn}
+            onPress={() => handleStepHours(-STEP)}
+          >
+            <Text style={styles.stepBtnText}>-30分</Text>
+          </TouchableOpacity>
+
+          <View
+            style={styles.sliderTrackContainer}
+            onLayout={(e) => {
+              const w = e.nativeEvent.layout.width;
+              setSliderWidth(w);
+              sliderWidthRef.current = w;
+            }}
+            {...panResponder.panHandlers}
+          >
+            <View style={styles.sliderTrackBg}>
+              <View
+                style={[
+                  styles.sliderTrackFill,
+                  { width: `${progressRatio * 100}%` },
+                ]}
+              />
+              <View
+                style={[
+                  styles.sliderThumb,
+                  { left: `${Math.max(0, Math.min(94, progressRatio * 94))}%` },
+                ]}
+              >
+                <Text style={styles.sliderThumbText}>{targetHours}h</Text>
+              </View>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.stepBtn}
+            onPress={() => handleStepHours(STEP)}
+          >
+            <Text style={styles.stepBtnText}>+30分</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* プリセットボタン */}
         <View style={styles.presetRow}>
           {presetHours.map((hours) => (
             <TouchableOpacity
@@ -283,18 +402,13 @@ export default function AutophagyCard({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#1e293b',
     borderRadius: 16,
     padding: 16,
     marginVertical: 8,
     marginHorizontal: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
     borderWidth: 1,
-    borderColor: '#f0f0f0',
+    borderColor: '#334155',
   },
   header: {
     flexDirection: 'row',
@@ -313,27 +427,31 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#212121',
+    color: '#f8fafc',
   },
   subtitle: {
     fontSize: 12,
-    color: '#757575',
+    color: '#94a3b8',
     marginTop: 2,
+  },
+  targetHoursHighlight: {
+    color: '#38bdf8',
+    fontWeight: '700',
   },
   content: {
     marginTop: 4,
   },
   completeBanner: {
-    backgroundColor: '#e8f5e9',
+    backgroundColor: '#064e3b',
     borderRadius: 8,
     padding: 10,
     marginBottom: 10,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#c8e6c9',
+    borderColor: '#059669',
   },
   completeBannerText: {
-    color: '#2e7d32',
+    color: '#34d399',
     fontWeight: '700',
     fontSize: 14,
   },
@@ -351,13 +469,13 @@ const styles = StyleSheet.create({
   },
   phaseDesc: {
     fontSize: 12,
-    color: '#616161',
+    color: '#cbd5e1',
     marginBottom: 10,
     lineHeight: 16,
   },
   progressBg: {
     height: 10,
-    backgroundColor: '#eee',
+    backgroundColor: '#334155',
     borderRadius: 5,
     overflow: 'hidden',
     marginBottom: 12,
@@ -368,35 +486,35 @@ const styles = StyleSheet.create({
   },
   timeContainer: {
     flexDirection: 'row',
-    backgroundColor: '#fafafa',
+    backgroundColor: '#0f172a',
     borderRadius: 12,
     padding: 12,
     alignItems: 'center',
     justifyContent: 'space-around',
     borderWidth: 1,
-    borderColor: '#eeeeee',
+    borderColor: '#334155',
   },
   timeBlock: {
     alignItems: 'center',
   },
   timeLabel: {
     fontSize: 11,
-    color: '#757575',
+    color: '#94a3b8',
     marginBottom: 4,
   },
   timeVal: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#212121',
+    color: '#f8fafc',
     fontVariant: ['tabular-nums'],
   },
   completedTimeVal: {
-    color: '#4caf50',
+    color: '#34d399',
   },
   timeDivider: {
     width: 1,
     height: '70%',
-    backgroundColor: '#e0e0e0',
+    backgroundColor: '#334155',
   },
   actionRow: {
     flexDirection: 'row',
@@ -406,16 +524,16 @@ const styles = StyleSheet.create({
   },
   startTimeText: {
     fontSize: 12,
-    color: '#757575',
+    color: '#94a3b8',
   },
   resetBtn: {
-    backgroundColor: '#e3f2fd',
+    backgroundColor: '#1e3a8a',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
   },
   resetBtnText: {
-    color: '#1976d2',
+    color: '#60a5fa',
     fontSize: 12,
     fontWeight: '600',
   },
@@ -425,11 +543,11 @@ const styles = StyleSheet.create({
   },
   disabledText: {
     fontSize: 13,
-    color: '#757575',
+    color: '#94a3b8',
     marginBottom: 10,
   },
   startBtn: {
-    backgroundColor: '#ff9800',
+    backgroundColor: '#d97706',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 20,
@@ -443,7 +561,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: '#334155',
   },
   selectorHeader: {
     flexDirection: 'row',
@@ -453,11 +571,11 @@ const styles = StyleSheet.create({
   },
   selectorLabel: {
     fontSize: 12,
-    color: '#616161',
+    color: '#cbd5e1',
     fontWeight: '600',
   },
   aiSuggestBtn: {
-    backgroundColor: '#7c4dff',
+    backgroundColor: '#7c3aed',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 14,
@@ -468,12 +586,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   aiCard: {
-    backgroundColor: '#f3e5f5',
+    backgroundColor: '#2e1065',
     borderRadius: 12,
     padding: 12,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#e1bee7',
+    borderColor: '#581c87',
   },
   aiCardHeader: {
     flexDirection: 'row',
@@ -484,10 +602,10 @@ const styles = StyleSheet.create({
   aiCardTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#4a148c',
+    color: '#c084fc',
   },
   applyAiBtn: {
-    backgroundColor: '#8e24aa',
+    backgroundColor: '#7e22ce',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 10,
@@ -499,38 +617,98 @@ const styles = StyleSheet.create({
   },
   aiReasonText: {
     fontSize: 12,
-    color: '#4a148c',
+    color: '#e9d5ff',
     lineHeight: 16,
     marginBottom: 4,
   },
   aiAdviceText: {
     fontSize: 11,
-    color: '#6a1b9a',
+    color: '#ddd6fe',
     lineHeight: 15,
+  },
+  /* スワイプ調整スライダー領域 */
+  swipeControlContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 10,
+    gap: 8,
+  },
+  stepBtn: {
+    backgroundColor: '#0f172a',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  stepBtnText: {
+    color: '#38bdf8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  sliderTrackContainer: {
+    flex: 1,
+    height: 40,
+    justifyContent: 'center',
+  },
+  sliderTrackBg: {
+    height: 12,
+    backgroundColor: '#0f172a',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#334155',
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  sliderTrackFill: {
+    height: '100%',
+    backgroundColor: '#0284c7',
+    borderRadius: 6,
+  },
+  sliderThumb: {
+    position: 'absolute',
+    top: -10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: '#38bdf8',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  sliderThumbText: {
+    color: '#0f172a',
+    fontSize: 10,
+    fontWeight: '800',
   },
   presetRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginTop: 4,
   },
   presetBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: '#0f172a',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: '#334155',
   },
   presetBtnActive: {
-    backgroundColor: '#e8f5e9',
-    borderColor: '#4caf50',
+    backgroundColor: '#064e3b',
+    borderColor: '#10b981',
   },
   presetBtnText: {
-    fontSize: 12,
-    color: '#616161',
+    fontSize: 11,
+    color: '#94a3b8',
     fontWeight: '600',
   },
   presetBtnTextActive: {
-    color: '#2e7d32',
+    color: '#34d399',
     fontWeight: '700',
   },
 });
