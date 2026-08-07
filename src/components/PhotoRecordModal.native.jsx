@@ -44,6 +44,7 @@ export default function PhotoRecordModal({
   setPortionPercentage,
   aiThinkingMode = 'quick',
   onToggleThinkingMode,
+  onTakePhoto,
   onSelectImage,
   onSaveMeal
 }) {
@@ -108,19 +109,27 @@ export default function PhotoRecordModal({
               </TouchableOpacity>
             </View>
 
-            {/* 写真選択ボタン & プレビュー */}
+            {/* 写真選択・撮影ボタン & プレビュー */}
             <View style={styles.photoPickerBox}>
               {selectedImageUri ? (
                 <View style={styles.previewContainer}>
                   <Image source={{ uri: selectedImageUri }} style={styles.previewImage} resizeMode="contain" />
-                  <TouchableOpacity style={styles.rePickBtn} onPress={onSelectImage}>
-                    <Text style={styles.rePickBtnText}>🔄 別の写真を選択</Text>
-                  </TouchableOpacity>
+                  <View style={styles.rePickActionRow}>
+                    <TouchableOpacity style={[styles.rePickBtn, { backgroundColor: '#0284c7' }]} onPress={onTakePhoto}>
+                      <Text style={styles.rePickBtnText}>📸 撮影し直す</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.rePickBtn} onPress={onSelectImage}>
+                      <Text style={styles.rePickBtnText}>🖼️ 別の画像を選ぶ</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ) : (
                 <View style={styles.pickActionRow}>
-                  <TouchableOpacity style={styles.pickBtn} onPress={onSelectImage}>
-                    <Text style={styles.pickBtnText}>📷 撮影 / ギャラリーから選択</Text>
+                  <TouchableOpacity style={[styles.pickBtn, { backgroundColor: '#0284c7', marginBottom: 8 }]} onPress={onTakePhoto}>
+                    <Text style={styles.pickBtnText}>📸 アプリ内で撮影</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.pickBtn, { backgroundColor: '#334155' }]} onPress={onSelectImage}>
+                    <Text style={styles.pickBtnText}>🖼️ ギャラリーから選択</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -458,12 +467,17 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#1e293b',
   },
-  rePickBtn: {
+  rePickActionRow: {
+    flexDirection: 'row',
+    gap: 8,
     marginTop: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+  },
+  rePickBtn: {
+    marginTop: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     backgroundColor: '#334155',
-    borderRadius: 6,
+    borderRadius: 8,
   },
   rePickBtnText: {
     color: '#cbd5e1',

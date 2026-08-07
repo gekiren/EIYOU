@@ -219,7 +219,80 @@ export default function App() {
     setSelectedDate(current.toISOString().split('T')[0]);
   };
 
-  // 画像選択 ＆ AI解析
+  // 選択/撮影した画像アセットの共通処理 ＆ AI解析
+  const processSelectedImage = async (asset) => {
+    let base64 = asset.base64;
+
+    if (!base64) {
+      const manipulated = await ImageManipulator.manipulateAsync(
+        asset.uri,
+        [{ resize: { width: 1024 } }],
+        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      );
+      base64 = manipulated.base64;
+    }
+
+    setSelectedImageUri(asset.uri);
+    setBase64Image(base64);
+
+    setAnalyzing(true);
+    setProgressMsg('AI解析サーバーへ接続中...');
+
+    const aiRes = await analyzeMealPhoto({
+      base64Image: base64,
+      workerProxyUrl: SECURE_WORKER_PROXY_URL,
+      preferredModel: preferredAiModel,
+      thinkingMode: aiThinkingMode,
+      onProgress: (msg) => setProgressMsg(msg)
+    });
+
+    setAiAnalysisResult(aiRes);
+    setMealNameInput(aiRes.mealName || (recordMode === 'ocr' ? '栄養成分表示商品' : '料理写真記録'));
+    setCaloriesInput(String(aiRes.calories || 0));
+    setProteinInput(String(aiRes.protein || 0));
+    setFatInput(String(aiRes.fat || 0));
+    setCarbsInput(String(aiRes.carbs || 0));
+    setSodiumInput(String(aiRes.sodium || 0));
+    setFiberInput(String(aiRes.fiber || 0));
+    setAnalyzing(false);
+  };
+
+  // アプリ内撮影（カメラ起動） ＆ AI解析
+  const handleTakePhoto = async () => {
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('権限が必要', 'カメラ撮影を行うにはカメラへのアクセス権限を許可してください。');
+        return;
+      }
+      let result;
+      try {
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          quality: 0.8,
+          base64: true,
+        });
+      } catch (cropErr) {
+        console.warn('Native Crop Intent failed, falling back to non-crop camera mode:', cropErr);
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ['images'],
+          allowsEditing: false,
+          quality: 0.8,
+          base64: true,
+        });
+      }
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        await processSelectedImage(result.assets[0]);
+      }
+    } catch (e) {
+      setAnalyzing(false);
+      Alert.alert('撮影エラー', e.message || 'カメラ起動または撮影処理中にエラーが発生しました。');
+    }
+  };
+
+  // ギャラリーから画像選択 ＆ AI解析
   const handleSelectImage = async () => {
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -230,49 +303,16 @@ export default function App() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         quality: 0.8,
+        allowsEditing: true,
         base64: true,
       });
 
-      if (!result.canceled && result.assets?.[0]) {
-        const asset = result.assets[0];
-        let base64 = asset.base64;
-
-        if (!base64) {
-          const manipulated = await ImageManipulator.manipulateAsync(
-            asset.uri,
-            [{ resize: { width: 1024 } }],
-            { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG, base64: true }
-          );
-          base64 = manipulated.base64;
-        }
-
-        setSelectedImageUri(asset.uri);
-        setBase64Image(base64);
-
-        setAnalyzing(true);
-        setProgressMsg('AI解析サーバーへ接続中...');
-
-        const aiRes = await analyzeMealPhoto({
-          base64Image: base64,
-          workerProxyUrl: SECURE_WORKER_PROXY_URL,
-          preferredModel: preferredAiModel,
-          thinkingMode: aiThinkingMode,
-          onProgress: (msg) => setProgressMsg(msg)
-        });
-
-        setAiAnalysisResult(aiRes);
-        setMealNameInput(aiRes.mealName || '料理写真記録');
-        setCaloriesInput(String(aiRes.calories || 0));
-        setProteinInput(String(aiRes.protein || 0));
-        setFatInput(String(aiRes.fat || 0));
-        setCarbsInput(String(aiRes.carbs || 0));
-        setSodiumInput(String(aiRes.sodium || 0));
-        setFiberInput(String(aiRes.fiber || 0));
-        setAnalyzing(false);
+      if (!result.canceled && result.assets && result.assets[0]) {
+        await processSelectedImage(result.assets[0]);
       }
     } catch (e) {
       setAnalyzing(false);
-      Alert.alert('解析エラー', e.message || '写真の解析に失敗しました。');
+      Alert.alert('解析エラー', e.message || '写真選択中にエラーが発生しました。');
     }
   };
 
@@ -298,7 +338,7 @@ export default function App() {
       sodium: Number(((Number(sodiumInput) || 0) * mult).toFixed(1)),
       fiber: Number(((Number(fiberInput) || 0) * mult).toFixed(1)),
       photoUrl: persistentPhotoUrl || '',
-      memo: aiAnalysisResult?.advice || ''
+      memo: (aiAnalysisResult && aiAnalysisResult.advice) || ''
     });
 
     setIsPhotoModalOpen(false);
@@ -422,12 +462,12 @@ export default function App() {
     setEditingMealLog(log);
     setEditMealName(log.name || '');
     setEditMealType(log.mealType || 'lunch');
-    setEditCalories(String(log.calories ?? 0));
-    setEditProtein(String(log.protein ?? 0));
-    setEditFat(String(log.fat ?? 0));
-    setEditCarbs(String(log.carbs ?? 0));
-    setEditSodium(String(log.sodium ?? 0));
-    setEditFiber(String(log.fiber ?? 0));
+    setEditCalories(String(log.calories != null ? log.calories : 0));
+    setEditProtein(String(log.protein != null ? log.protein : 0));
+    setEditFat(String(log.fat != null ? log.fat : 0));
+    setEditCarbs(String(log.carbs != null ? log.carbs : 0));
+    setEditSodium(String(log.sodium != null ? log.sodium : 0));
+    setEditFiber(String(log.fiber != null ? log.fiber : 0));
     setEditMemo(log.memo || '');
     setIsEditModalOpen(true);
   };
@@ -575,6 +615,7 @@ export default function App() {
         setPortionPercentage={setPortionPercentage}
         aiThinkingMode={aiThinkingMode}
         onToggleThinkingMode={handleToggleThinkingMode}
+        onTakePhoto={handleTakePhoto}
         onSelectImage={handleSelectImage}
         onSaveMeal={handleSavePhotoMeal}
       />
