@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -14,6 +14,7 @@ import {
 import * as Updates from 'expo-updates';
 import { exportMealsToCSV } from '../shared_modules/csv/nutritionCsvService.js';
 import { obsidianSyncService } from '../shared_modules/obsidian/obsidianSyncService.js';
+import { photoStorageService } from '../shared_modules/storage/photoStorageService.js';
 import { calculateTargetGoals } from '../utils/nutritionCalculator.js';
 
 export default function SettingsModal({
@@ -43,6 +44,30 @@ export default function SettingsModal({
   const [activeTab, setActiveTab] = useState('goals'); // 'goals' | 'updates' | 'obsidian' | 'data'
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [otaStatusMsg, setOtaStatusMsg] = useState('');
+  const [cacheSizeMB, setCacheSizeMB] = useState('0.0');
+
+  // キャッシュ容量の取得
+  const refreshCacheSize = async () => {
+    const size = await photoStorageService.getCacheSizeMB();
+    setCacheSizeMB(size);
+  };
+
+  useEffect(() => {
+    if (visible && activeTab === 'data') {
+      refreshCacheSize();
+    }
+  }, [visible, activeTab]);
+
+  const handleCleanTempCache = async () => {
+    const res = await photoStorageService.cleanTempCache();
+    if (res.success) {
+      const mb = (res.freedBytes / (1024 * 1024)).toFixed(2);
+      Alert.alert('✅ キャッシュ消去完了', `一時写真データ・ログキャッシュ (${mb} MB) を消去しました。`);
+      refreshCacheSize();
+    } else {
+      Alert.alert('⚠️ エラー', res.error || 'キャッシュの消去に失敗しました。');
+    }
+  };
 
   // BMR / TDEE 計算用フォームステート
   const [gender, setGender] = useState('male');
@@ -535,17 +560,29 @@ export default function SettingsModal({
               </View>
             )}
 
-            {/* 4. CSVデータ出入力タブ */}
+            {/* 4. CSVデータ出入力・キャッシュ整理タブ */}
             {activeTab === 'data' && (
-              <View style={styles.sectionCard}>
-                <Text style={styles.sectionTitle}>📂 CSVエクスポート・バックアップ</Text>
-                <Text style={styles.guideText}>
-                  すべての食事ログ・PFC・食物繊維データをCSV形式で出力・バックアップします。
-                </Text>
-                <TouchableOpacity style={styles.csvExportBtn} onPress={exportMealsToCSV}>
-                  <Text style={styles.csvExportBtnText}>📥 食事ログをCSVダウンロード</Text>
-                </TouchableOpacity>
-              </View>
+              <>
+                <View style={styles.sectionCard}>
+                  <Text style={styles.sectionTitle}>🧹 写真一時キャッシュ・メモリ整理</Text>
+                  <Text style={styles.guideText}>
+                    撮影や画像分析の際に生成された一時キャッシュファイル（現在: {cacheSizeMB} MB）をクリアし、メモリと端末ストレージを解放します。
+                  </Text>
+                  <TouchableOpacity style={[styles.csvExportBtn, { backgroundColor: '#e11d48', marginTop: 10 }]} onPress={handleCleanTempCache}>
+                    <Text style={styles.csvExportBtnText}>🗑️ 写真一時キャッシュを消去 ({cacheSizeMB} MB)</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.sectionCard}>
+                  <Text style={styles.sectionTitle}>📂 CSVエクスポート・バックアップ</Text>
+                  <Text style={styles.guideText}>
+                    すべての食事ログ・PFC・食物繊維データをCSV形式で出力・バックアップします。
+                  </Text>
+                  <TouchableOpacity style={styles.csvExportBtn} onPress={exportMealsToCSV}>
+                    <Text style={styles.csvExportBtnText}>📥 食事ログをCSVダウンロード</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
             )}
 
             {/* 保存ボタン */}

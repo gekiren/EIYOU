@@ -141,6 +141,9 @@ export default function App() {
   }, [selectedDate]);
 
   const loadSettings = async () => {
+    // 起動時に一時写真キャッシュを自動消去してストレージとメモリを解放
+    photoStorageService.cleanTempCache().catch(() => {});
+
     const savedGoals = await safeStorage.getItem(STORAGE_KEYS.USER_GOALS, '');
     if (savedGoals) {
       try {
@@ -219,42 +222,55 @@ export default function App() {
     setSelectedDate(current.toISOString().split('T')[0]);
   };
 
-  // 選択/撮影した画像アセットの共通処理 ＆ AI解析
+  // 選択/撮影した画像アセットの共通処理 ＆ AI解析 (メモリ軽量化)
   const processSelectedImage = async (asset) => {
-    let base64 = asset.base64;
+    setAnalyzing(true);
+    setProgressMsg('画像を最適化圧縮中...');
 
-    if (!base64) {
+    let base64 = asset.base64;
+    let finalUri = asset.uri;
+
+    // 高解像度データのメモリ解放のため、長辺1024pxに縮小 ＆ 圧縮率0.7で軽量ベース64化
+    try {
       const manipulated = await ImageManipulator.manipulateAsync(
         asset.uri,
         [{ resize: { width: 1024 } }],
-        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
       );
       base64 = manipulated.base64;
+      finalUri = manipulated.uri;
+    } catch (resizeErr) {
+      console.warn('[ImageOptimization] Manipulate failed, fallback to original:', resizeErr);
     }
 
-    setSelectedImageUri(asset.uri);
+    setSelectedImageUri(finalUri);
     setBase64Image(base64);
 
-    setAnalyzing(true);
     setProgressMsg('AI解析サーバーへ接続中...');
 
-    const aiRes = await analyzeMealPhoto({
-      base64Image: base64,
-      workerProxyUrl: SECURE_WORKER_PROXY_URL,
-      preferredModel: preferredAiModel,
-      thinkingMode: aiThinkingMode,
-      onProgress: (msg) => setProgressMsg(msg)
-    });
+    try {
+      const aiRes = await analyzeMealPhoto({
+        base64Image: base64,
+        workerProxyUrl: SECURE_WORKER_PROXY_URL,
+        preferredModel: preferredAiModel,
+        thinkingMode: aiThinkingMode,
+        onProgress: (msg) => setProgressMsg(msg)
+      });
 
-    setAiAnalysisResult(aiRes);
-    setMealNameInput(aiRes.mealName || (recordMode === 'ocr' ? '栄養成分表示商品' : '料理写真記録'));
-    setCaloriesInput(String(aiRes.calories || 0));
-    setProteinInput(String(aiRes.protein || 0));
-    setFatInput(String(aiRes.fat || 0));
-    setCarbsInput(String(aiRes.carbs || 0));
-    setSodiumInput(String(aiRes.sodium || 0));
-    setFiberInput(String(aiRes.fiber || 0));
-    setAnalyzing(false);
+      setAiAnalysisResult(aiRes);
+      setMealNameInput(aiRes.mealName || (recordMode === 'ocr' ? '栄養成分表示商品' : '料理写真記録'));
+      setCaloriesInput(String(aiRes.calories || 0));
+      setProteinInput(String(aiRes.protein || 0));
+      setFatInput(String(aiRes.fat || 0));
+      setCarbsInput(String(aiRes.carbs || 0));
+      setSodiumInput(String(aiRes.sodium || 0));
+      setFiberInput(String(aiRes.fiber || 0));
+    } catch (err) {
+      console.error('Image analysis error:', err);
+      Alert.alert('解析エラー', '画像のAI解析中にエラーが発生しました。');
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   // アプリ内撮影（カメラ起動） ＆ AI解析
@@ -271,7 +287,7 @@ export default function App() {
           mediaTypes: ['images'],
           allowsEditing: true,
           quality: 0.8,
-          base64: true,
+          base64: false, // メモリ圧迫防止のため直接の Base64 取得を避け、Manipulator に委ねる
         });
       } catch (cropErr) {
         console.warn('Native Crop Intent failed, falling back to non-crop camera mode:', cropErr);
@@ -279,7 +295,7 @@ export default function App() {
           mediaTypes: ['images'],
           allowsEditing: false,
           quality: 0.8,
-          base64: true,
+          base64: false,
         });
       }
 
@@ -304,7 +320,7 @@ export default function App() {
         mediaTypes: ['images'],
         quality: 0.8,
         allowsEditing: true,
-        base64: true,
+        base64: false, // メモリ圧迫防止のため直接 Base64 取得を回避
       });
 
       if (!result.canceled && result.assets && result.assets[0]) {

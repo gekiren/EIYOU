@@ -79,5 +79,75 @@ export const photoStorageService = {
     } catch (error) {
       console.warn('[PhotoStorage] Failed to delete photo file:', error);
     }
+  },
+
+  /**
+   * FileSystem.cacheDirectory や ImagePicker の一時撮影・編集キャッシュファイルを一括削除
+   */
+  async cleanTempCache() {
+    try {
+      const cacheDir = FileSystem.cacheDirectory;
+      if (!cacheDir) return { success: true, freedBytes: 0 };
+
+      const dirInfo = await FileSystem.getInfoAsync(cacheDir);
+      if (!dirInfo.exists) return { success: true, freedBytes: 0 };
+
+      const files = await FileSystem.readDirectoryAsync(cacheDir);
+      let freedBytes = 0;
+
+      for (const file of files) {
+        // meal_photos などは documentDirectory にあるため cacheDirectory 内のファイル・フォルダは安全に削除
+        const filePath = `${cacheDir}${file}`;
+        try {
+          const info = await FileSystem.getInfoAsync(filePath);
+          if (info.exists) {
+            freedBytes += info.size || 0;
+            await FileSystem.deleteAsync(filePath, { idempotent: true });
+          }
+        } catch (e) {
+          console.warn(`[PhotoStorage] Failed to clean cache item ${file}:`, e);
+        }
+      }
+
+      console.log(`[PhotoStorage] Cleaned temp cache: ${(freedBytes / (1024 * 1024)).toFixed(2)} MB freed`);
+      return { success: true, freedBytes };
+    } catch (error) {
+      console.warn('[PhotoStorage] Failed to clean temp cache:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  /**
+   * 一時キャッシュの合計容量（MB）を計測して返却
+   */
+  async getCacheSizeMB() {
+    try {
+      const cacheDir = FileSystem.cacheDirectory;
+      if (!cacheDir) return '0.0';
+
+      const dirInfo = await FileSystem.getInfoAsync(cacheDir);
+      if (!dirInfo.exists) return '0.0';
+
+      const files = await FileSystem.readDirectoryAsync(cacheDir);
+      let totalBytes = 0;
+
+      for (const file of files) {
+        const filePath = `${cacheDir}${file}`;
+        try {
+          const info = await FileSystem.getInfoAsync(filePath);
+          if (info.exists) {
+            totalBytes += info.size || 0;
+          }
+        } catch (e) {
+          // 無視
+        }
+      }
+
+      return (totalBytes / (1024 * 1024)).toFixed(2);
+    } catch (error) {
+      console.warn('[PhotoStorage] Failed to calculate cache size:', error);
+      return '0.0';
+    }
   }
 };
+
