@@ -17,7 +17,7 @@ import * as FileSystem from 'expo-file-system';
 import { safeStorage } from './shared_modules/storage/safeStorage.js';
 import { nutritionDb } from './shared_modules/db/nutritionDb.js';
 import { analyzeMealPhoto, analyzeMealTextWithAI } from './shared_modules/ai/nutritionAiService.js';
-import { SECURE_WORKER_PROXY_URL, STORAGE_KEYS, DEFAULT_USER_GOALS, DEFAULT_TOLERANCES } from './config/constants.js';
+import { SECURE_WORKER_PROXY_URL, STORAGE_KEYS, DEFAULT_USER_GOALS, DEFAULT_TOLERANCES, DEFAULT_CALC_PARAMS } from './config/constants.js';
 import { obsidianSyncService } from './shared_modules/obsidian/obsidianSyncService.js';
 import { photoStorageService } from './shared_modules/storage/photoStorageService.js';
 
@@ -34,6 +34,7 @@ import SettingsModal from './components/SettingsModal.native.jsx';
 import AutophagyCard from './components/AutophagyCard.native.jsx';
 import QuickFavoritesBar from './components/QuickFavoritesBar.native.jsx';
 import { triggerSuccess, triggerImpact, triggerWarning } from './utils/hapticsService.js';
+import { getInitialMealTimeAndType, getCurrentTimeString } from './utils/timeUtils.js';
 import {
   loadAutophagyConfig,
   saveAutophagyConfig,
@@ -79,17 +80,20 @@ export default function App() {
   const [sodiumInput, setSodiumInput] = useState('');
   const [fiberInput, setFiberInput] = useState('');
   const [mealType, setMealType] = useState('lunch');
+  const [mealTimeInput, setMealTimeInput] = useState('');
 
   // チャット
   const [chatInput, setChatInput] = useState('');
   const [chatAnalyzing, setChatAnalyzing] = useState(false);
   const [chatAnalyzedData, setChatAnalyzedData] = useState(null);
   const [chatMealType, setChatMealType] = useState('lunch');
+  const [chatMealTime, setChatMealTime] = useState('');
 
   // 編集
   const [editingMealLog, setEditingMealLog] = useState(null);
   const [editMealName, setEditMealName] = useState('');
   const [editMealType, setEditMealType] = useState('lunch');
+  const [editMealTime, setEditMealTime] = useState('');
   const [editCalories, setEditCalories] = useState('');
   const [editProtein, setEditProtein] = useState('');
   const [editFat, setEditFat] = useState('');
@@ -115,7 +119,8 @@ export default function App() {
 
   const [userGoals, setUserGoals] = useState({
     ...DEFAULT_USER_GOALS,
-    tolerances: DEFAULT_TOLERANCES
+    tolerances: DEFAULT_TOLERANCES,
+    calcParams: DEFAULT_CALC_PARAMS
   });
 
   const [preferredAiModel, setPreferredAiModel] = useState('gemini');
@@ -150,7 +155,14 @@ export default function App() {
     const savedGoals = await safeStorage.getItem(STORAGE_KEYS.USER_GOALS, '');
     if (savedGoals) {
       try {
-        setUserGoals(JSON.parse(savedGoals));
+        const parsed = JSON.parse(savedGoals);
+        setUserGoals({
+          ...parsed,
+          calcParams: {
+            ...DEFAULT_CALC_PARAMS,
+            ...(parsed.calcParams || {})
+          }
+        });
       } catch (e) {}
     }
     const savedModel = await safeStorage.getItem(STORAGE_KEYS.AI_MODEL, 'gemini');
@@ -370,6 +382,21 @@ export default function App() {
     }
   };
 
+  // モーダルオープンハンドラ（現在時刻から mealType & mealTime を初期設定）
+  const handleOpenPhotoModal = () => {
+    const { mealTime, mealType: initialType } = getInitialMealTimeAndType();
+    setMealTimeInput(mealTime);
+    setMealType(initialType);
+    setIsPhotoModalOpen(true);
+  };
+
+  const handleOpenChatModal = () => {
+    const { mealTime, mealType: initialType } = getInitialMealTimeAndType();
+    setChatMealTime(mealTime);
+    setChatMealType(initialType);
+    setIsChatModalOpen(true);
+  };
+
   // 写真記録の保存
   const handleSavePhotoMeal = async () => {
     if (!mealNameInput.trim()) {
@@ -384,6 +411,7 @@ export default function App() {
     await nutritionDb.addMealLog({
       date: selectedDate,
       mealType,
+      mealTime: mealTimeInput || getCurrentTimeString(),
       name: mealNameInput,
       calories: Math.round((Number(caloriesInput) || 0) * mult),
       protein: Number(((Number(proteinInput) || 0) * mult).toFixed(1)),
@@ -429,6 +457,7 @@ export default function App() {
     await nutritionDb.addMealLog({
       date: selectedDate,
       mealType: chatMealType,
+      mealTime: chatMealTime || getCurrentTimeString(),
       name: chatAnalyzedData.mealName || chatInput.substring(0, 20),
       calories: Number(chatAnalyzedData.calories) || 0,
       protein: Number(chatAnalyzedData.protein) || 0,
@@ -447,9 +476,11 @@ export default function App() {
 
   // 履歴・お気に入りからの追加
   const handleAddFromHistory = async (mealData) => {
+    const { mealTime: currentTime } = getInitialMealTimeAndType();
     await nutritionDb.addMealLog({
       ...mealData,
-      date: selectedDate
+      date: selectedDate,
+      mealTime: mealData.mealTime || currentTime,
     });
     setIsHistoryModalOpen(false);
     triggerSuccess();
@@ -458,10 +489,12 @@ export default function App() {
 
   // MD一括保存
   const handleBatchSaveMd = async (selectedMeals) => {
+    const { mealTime: currentTime, mealType: currentType } = getInitialMealTimeAndType();
     for (const item of selectedMeals) {
       await nutritionDb.addMealLog({
         date: item.date || selectedDate,
-        mealType: item.mealType || 'lunch',
+        mealType: item.mealType || currentType,
+        mealTime: item.mealTime || currentTime,
         name: item.name || '食事記録',
         calories: Number(item.calories) || 0,
         protein: Number(item.protein) || 0,
@@ -478,12 +511,7 @@ export default function App() {
 
   // お気に入りクイックタップでの追加
   const handleQuickAddFavorite = async (favoriteItem) => {
-    const hour = new Date().getHours();
-    let currentMealType = 'lunch';
-    if (hour >= 5 && hour < 10) currentMealType = 'breakfast';
-    else if (hour >= 10 && hour < 15) currentMealType = 'lunch';
-    else if (hour >= 15 && hour < 21) currentMealType = 'dinner';
-    else currentMealType = 'snack';
+    const { mealTime: currentTime, mealType: currentMealType } = getInitialMealTimeAndType();
 
     const mealData = typeof favoriteItem === 'string'
       ? { name: favoriteItem, calories: 0, protein: 0, fat: 0, carbs: 0, sodium: 0, fiber: 0 }
@@ -493,6 +521,7 @@ export default function App() {
       ...mealData,
       date: selectedDate,
       mealType: mealData.mealType || currentMealType,
+      mealTime: mealData.mealTime || currentTime,
     });
     triggerSuccess();
     loadMealLogs();
@@ -517,6 +546,10 @@ export default function App() {
     setEditingMealLog(log);
     setEditMealName(log.name || '');
     setEditMealType(log.mealType || 'lunch');
+    const fallbackTime = log.createdAt && !isNaN(new Date(log.createdAt).getTime())
+      ? new Date(log.createdAt).toTimeString().slice(0, 5)
+      : getCurrentTimeString();
+    setEditMealTime(log.mealTime || fallbackTime);
     const base = {
       calories: log.calories != null ? log.calories : 0,
       protein:  log.protein  != null ? log.protein  : 0,
@@ -550,6 +583,7 @@ export default function App() {
     await nutritionDb.updateMealLog(editingMealLog.id, {
       name: editMealName,
       mealType: editMealType,
+      mealTime: editMealTime || getCurrentTimeString(),
       ...vals,
       memo: editMemo
     });
@@ -603,10 +637,10 @@ export default function App() {
       <ScrollView contentContainerStyle={styles.mainScroll} showsVerticalScrollIndicator={false}>
         {/* 食事追加アクションボタン群 (起動してすぐ記録可能) */}
         <View style={styles.actionGrid}>
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#3b82f6' }]} onPress={() => setIsPhotoModalOpen(true)}>
+          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#3b82f6' }]} onPress={handleOpenPhotoModal}>
             <Text style={styles.actionBtnText}>📷 写真記録</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#10b981' }]} onPress={() => setIsChatModalOpen(true)}>
+          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#10b981' }]} onPress={handleOpenChatModal}>
             <Text style={styles.actionBtnText}>💬 AIチャット</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#8b5cf6' }]} onPress={() => setIsMdModalOpen(true)}>
@@ -617,14 +651,14 @@ export default function App() {
           </TouchableOpacity>
         </View>
 
-        {/* 1. 今日の栄養サマリー ＆ カロリー/PFC/塩分/食物繊維進捗バー */}
-        <NutritionSummaryCard totals={totals} userGoals={userGoals} mealLogs={mealLogs} />
-
         {/* クイックお気に入りバー */}
         <QuickFavoritesBar
           favorites={favorites}
           onSelectFavorite={handleQuickAddFavorite}
         />
+
+        {/* 1. 今日の栄養サマリー ＆ カロリー/PFC/塩分/食物繊維進捗バー */}
+        <NutritionSummaryCard totals={totals} userGoals={userGoals} mealLogs={mealLogs} />
 
         {/* 2. 食事ログ一覧カード */}
         <MealLogList
@@ -677,6 +711,8 @@ export default function App() {
         setFiberInput={setFiberInput}
         mealType={mealType}
         setMealType={setMealType}
+        mealTimeInput={mealTimeInput}
+        setMealTimeInput={setMealTimeInput}
         portionMultiplier={portionMultiplier}
         setPortionMultiplier={setPortionMultiplier}
         portionPercentage={portionPercentage}
@@ -700,6 +736,8 @@ export default function App() {
         chatAnalyzedData={chatAnalyzedData}
         chatMealType={chatMealType}
         setChatMealType={setChatMealType}
+        chatMealTime={chatMealTime}
+        setChatMealTime={setChatMealTime}
         aiThinkingMode={aiThinkingMode}
         onToggleThinkingMode={handleToggleThinkingMode}
         onAnalyzeChat={handleAnalyzeChat}
@@ -731,6 +769,8 @@ export default function App() {
         setEditMealName={setEditMealName}
         editMealType={editMealType}
         setEditMealType={setEditMealType}
+        editMealTime={editMealTime}
+        setEditMealTime={setEditMealTime}
         editCalories={editCalories}
         setEditCalories={setEditCalories}
         editProtein={editProtein}

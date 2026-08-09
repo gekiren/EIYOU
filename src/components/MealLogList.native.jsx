@@ -50,12 +50,17 @@ export default function MealLogList({
           const favorited = isFav(log.name);
           const cardKey = `meallog-${log.id || log.name || idx}-${idx}`;
 
+          const displayTime = log.mealTime || (log.createdAt && !isNaN(new Date(log.createdAt).getTime()) ? new Date(log.createdAt).toTimeString().slice(0, 5) : '');
+
           return (
             <View key={cardKey} style={styles.logCard}>
               <View style={styles.cardHeader}>
                 <View style={[styles.typeBadge, { backgroundColor: typeColor }]}>
                   <Text style={styles.typeBadgeText}>{typeLabel}</Text>
                 </View>
+                {Boolean(displayTime) && (
+                  <Text style={styles.timeText}>⏰ {displayTime}</Text>
+                )}
                 <Text style={styles.mealName} numberOfLines={1}>{log.name || '無題'}</Text>
                 <Text style={styles.caloriesText}>{log.calories || 0} kcal</Text>
               </View>
@@ -169,6 +174,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#ffffff',
+  },
+  timeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#94a3b8',
+    marginRight: 8,
   },
   mealName: {
     flex: 1,

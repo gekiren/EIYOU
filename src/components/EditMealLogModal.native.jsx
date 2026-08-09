@@ -25,6 +25,8 @@ export default function EditMealLogModal({
   setEditMealName,
   editMealType,
   setEditMealType,
+  editMealTime,
+  setEditMealTime,
   editCalories,
   setEditCalories,
   editProtein,
@@ -119,6 +121,16 @@ export default function EditMealLogModal({
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
+            {/* 記録時間 */}
+            <Text style={styles.fieldLabel}>⏰ 記録時間 (HH:mm)</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="12:00"
+              placeholderTextColor="#64748b"
+              value={editMealTime}
+              onChangeText={setEditMealTime}
+            />
+
             {/* 食事区分 */}
             <Text style={styles.fieldLabel}>食事区分</Text>
             <View style={styles.mealTypeRow}>

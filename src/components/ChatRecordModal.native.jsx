@@ -19,6 +19,8 @@ export default function ChatRecordModal({
   chatAnalyzedData,
   chatMealType,
   setChatMealType,
+  chatMealTime,
+  setChatMealTime,
   aiThinkingMode = 'quick',
   onToggleThinkingMode,
   onAnalyzeChat,
@@ -66,6 +68,16 @@ export default function ChatRecordModal({
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* 記録時間 ＆ 食事区分 */}
+            <Text style={styles.fieldLabel}>⏰ 記録時間 (HH:mm)</Text>
+            <TextInput
+              style={[styles.chatTextArea, { minHeight: 42, paddingVertical: 8, marginBottom: 12 }]}
+              placeholder="12:00"
+              placeholderTextColor="#64748b"
+              value={chatMealTime}
+              onChangeText={setChatMealTime}
+            />
 
             {/* 食事区分 */}
             <Text style={styles.fieldLabel}>食事区分</Text>

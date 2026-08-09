@@ -72,12 +72,73 @@ export default function SettingsModal({
   };
 
   // BMR / TDEE 計算用フォームステート
-  const [gender, setGender] = useState('male');
-  const [age, setAge] = useState('30');
-  const [height, setHeight] = useState('170');
-  const [weight, setWeight] = useState('65');
-  const [activityLevel, setActivityLevel] = useState('moderate');
-  const [goalType, setGoalType] = useState('maintain');
+  const savedCalc = userGoals.calcParams || {};
+  const [gender, setGender] = useState(savedCalc.gender || 'male');
+  const [age, setAge] = useState(String(savedCalc.age ?? '30'));
+  const [height, setHeight] = useState(String(savedCalc.height ?? '170'));
+  const [weight, setWeight] = useState(String(savedCalc.weight ?? '65'));
+  const [activityLevel, setActivityLevel] = useState(savedCalc.activityLevel || 'moderate');
+  const [goalType, setGoalType] = useState(savedCalc.goalType || 'maintain');
+
+  // モーダルオープン時または外部プロパティ更新時の同期
+  useEffect(() => {
+    if (visible && userGoals.calcParams) {
+      const p = userGoals.calcParams;
+      if (p.gender) setGender(p.gender);
+      if (p.age != null) setAge(String(p.age));
+      if (p.height != null) setHeight(String(p.height));
+      if (p.weight != null) setWeight(String(p.weight));
+      if (p.activityLevel) setActivityLevel(p.activityLevel);
+      if (p.goalType) setGoalType(p.goalType);
+    }
+  }, [visible, userGoals.calcParams]);
+
+  // 入力変更時に userGoals.calcParams を更新するヘルパー
+  const updateCalcParam = (updatedFields) => {
+    const newCalcParams = {
+      gender,
+      age,
+      height,
+      weight,
+      activityLevel,
+      goalType,
+      ...updatedFields
+    };
+    setUserGoals({
+      ...userGoals,
+      calcParams: newCalcParams
+    });
+  };
+
+  const handleGenderChange = (val) => {
+    setGender(val);
+    updateCalcParam({ gender: val });
+  };
+
+  const handleAgeChange = (val) => {
+    setAge(val);
+    updateCalcParam({ age: val });
+  };
+
+  const handleHeightChange = (val) => {
+    setHeight(val);
+    updateCalcParam({ height: val });
+  };
+
+  const handleWeightChange = (val) => {
+    setWeight(val);
+    updateCalcParam({ weight: val });
+  };
+
+  const handleActivityLevelChange = (val) => {
+    setActivityLevel(val);
+    updateCalcParam({ activityLevel: val });
+  };
+
+  const handleGoalTypeChange = (val) => {
+    setGoalType(val);
+    updateCalcParam({ goalType: val });
+  };
 
   // 計算結果プレビュー
   const calculatedGoals = useMemo(() => {
@@ -100,7 +161,15 @@ export default function SettingsModal({
       fat: calculatedGoals.fat,
       carbs: calculatedGoals.carbs,
       sodium: calculatedGoals.sodium,
-      fiber: calculatedGoals.fiber
+      fiber: calculatedGoals.fiber,
+      calcParams: {
+        gender,
+        age,
+        height,
+        weight,
+        activityLevel,
+        goalType
+      }
     });
     Alert.alert('🎉 目標を更新', 'BMR / TDEE 電卓で計算された目標値（カロリー・PFC・塩分・食物繊維）を適用しました！');
   };
@@ -297,13 +366,13 @@ export default function SettingsModal({
                   <View style={styles.selectorRow}>
                     <TouchableOpacity
                       style={[styles.selectorBtn, gender === 'male' && styles.activeSelectorBtn]}
-                      onPress={() => setGender('male')}
+                      onPress={() => handleGenderChange('male')}
                     >
                       <Text style={[styles.selectorText, gender === 'male' && styles.activeSelectorText]}>👨 男性</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.selectorBtn, gender === 'female' && styles.activeSelectorBtn]}
-                      onPress={() => setGender('female')}
+                      onPress={() => handleGenderChange('female')}
                     >
                       <Text style={[styles.selectorText, gender === 'female' && styles.activeSelectorText]}>👩 女性</Text>
                     </TouchableOpacity>
@@ -317,7 +386,7 @@ export default function SettingsModal({
                         style={styles.textInput}
                         keyboardType="numeric"
                         value={age}
-                        onChangeText={setAge}
+                        onChangeText={handleAgeChange}
                       />
                     </View>
                     <View style={styles.inputCellThird}>
@@ -326,7 +395,7 @@ export default function SettingsModal({
                         style={styles.textInput}
                         keyboardType="numeric"
                         value={height}
-                        onChangeText={setHeight}
+                        onChangeText={handleHeightChange}
                       />
                     </View>
                     <View style={styles.inputCellThird}>
@@ -335,7 +404,7 @@ export default function SettingsModal({
                         style={styles.textInput}
                         keyboardType="numeric"
                         value={weight}
-                        onChangeText={setWeight}
+                        onChangeText={handleWeightChange}
                       />
                     </View>
                   </View>
@@ -353,7 +422,7 @@ export default function SettingsModal({
                       <TouchableOpacity
                         key={opt.key}
                         style={[styles.optionChip, activityLevel === opt.key && styles.activeOptionChip]}
-                        onPress={() => setActivityLevel(opt.key)}
+                        onPress={() => handleActivityLevelChange(opt.key)}
                       >
                         <Text style={[styles.optionChipText, activityLevel === opt.key && styles.activeOptionChipText]}>
                           {opt.label}
@@ -373,7 +442,7 @@ export default function SettingsModal({
                       <TouchableOpacity
                         key={g.key}
                         style={[styles.selectorBtn, goalType === g.key && styles.activeSelectorBtn]}
-                        onPress={() => setGoalType(g.key)}
+                        onPress={() => handleGoalTypeChange(g.key)}
                       >
                         <Text style={[styles.selectorText, goalType === g.key && styles.activeSelectorText]}>
                           {g.label}
