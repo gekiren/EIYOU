@@ -97,6 +97,8 @@ export default function App() {
   const [editSodium, setEditSodium] = useState('');
   const [editFiber, setEditFiber] = useState('');
   const [editMemo, setEditMemo] = useState('');
+  // 編集モーダル用の元の栄養素値（倍率計算の基準）
+  const [editBaseNutrition, setEditBaseNutrition] = useState(null);
 
   // 履歴追加
   const [historyTargetMealType, setHistoryTargetMealType] = useState('lunch');
@@ -515,32 +517,45 @@ export default function App() {
     setEditingMealLog(log);
     setEditMealName(log.name || '');
     setEditMealType(log.mealType || 'lunch');
-    setEditCalories(String(log.calories != null ? log.calories : 0));
-    setEditProtein(String(log.protein != null ? log.protein : 0));
-    setEditFat(String(log.fat != null ? log.fat : 0));
-    setEditCarbs(String(log.carbs != null ? log.carbs : 0));
-    setEditSodium(String(log.sodium != null ? log.sodium : 0));
-    setEditFiber(String(log.fiber != null ? log.fiber : 0));
+    const base = {
+      calories: log.calories != null ? log.calories : 0,
+      protein:  log.protein  != null ? log.protein  : 0,
+      fat:      log.fat      != null ? log.fat      : 0,
+      carbs:    log.carbs    != null ? log.carbs    : 0,
+      sodium:   log.sodium   != null ? log.sodium   : 0,
+      fiber:    log.fiber    != null ? log.fiber    : 0,
+    };
+    setEditBaseNutrition(base);
+    setEditCalories(String(base.calories));
+    setEditProtein(String(base.protein));
+    setEditFat(String(base.fat));
+    setEditCarbs(String(base.carbs));
+    setEditSodium(String(base.sodium));
+    setEditFiber(String(base.fiber));
     setEditMemo(log.memo || '');
     setIsEditModalOpen(true);
   };
 
-  // 食事編集保存
-  const handleSaveEditMeal = async () => {
+  // 食事編集保存（倍率適用済みの値をそのまま保存）
+  const handleSaveEditMeal = async (multipliedValues) => {
     if (!editingMealLog) return;
+    const vals = multipliedValues || {
+      calories: Number(editCalories) || 0,
+      protein:  Number(editProtein)  || 0,
+      fat:      Number(editFat)      || 0,
+      carbs:    Number(editCarbs)    || 0,
+      sodium:   Number(editSodium)   || 0,
+      fiber:    Number(editFiber)    || 0,
+    };
     await nutritionDb.updateMealLog(editingMealLog.id, {
       name: editMealName,
       mealType: editMealType,
-      calories: Number(editCalories) || 0,
-      protein: Number(editProtein) || 0,
-      fat: Number(editFat) || 0,
-      carbs: Number(editCarbs) || 0,
-      sodium: Number(editSodium) || 0,
-      fiber: Number(editFiber) || 0,
+      ...vals,
       memo: editMemo
     });
     setIsEditModalOpen(false);
     setEditingMealLog(null);
+    setEditBaseNutrition(null);
     loadMealLogs();
   };
 
@@ -730,6 +745,7 @@ export default function App() {
         setEditFiber={setEditFiber}
         editMemo={editMemo}
         setEditMemo={setEditMemo}
+        editBaseNutrition={editBaseNutrition}
         onSaveEdit={handleSaveEditMeal}
       />
 

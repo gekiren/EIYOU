@@ -56,6 +56,10 @@ export default function PhotoRecordModal({
   const [eatenGram, setEatenGram] = useState(100);
   const [basePiece, setBasePiece] = useState(1);
   const [eatenPiece, setEatenPiece] = useState(1);
+  const [isCustomPercent, setIsCustomPercent] = useState(false);
+  const [customPercentText, setCustomPercentText] = useState('');
+  const [isCustomMultiplier, setIsCustomMultiplier] = useState(false);
+  const [customMultiplierText, setCustomMultiplierText] = useState('');
 
   if (!visible) return null;
 
@@ -203,18 +207,56 @@ export default function PhotoRecordModal({
                 </View>
 
                 {portionMode === 'percent' && (
-                  <View style={styles.presetRow}>
-                    {[25, 50, 75, 100, 150, 200].map((pct) => (
+                  <View>
+                    <View style={styles.presetRow}>
+                      {[25, 50, 75, 100, 150, 200].map((pct) => (
+                        <TouchableOpacity
+                          key={pct}
+                          style={[styles.presetBtn, !isCustomPercent && portionPercentage === pct && styles.activePresetBtn]}
+                          onPress={() => {
+                            setPortionPercentage(pct);
+                            setIsCustomPercent(false);
+                            setCustomPercentText('');
+                          }}
+                        >
+                          <Text style={[styles.presetBtnText, !isCustomPercent && portionPercentage === pct && styles.activePresetBtnText]}>
+                            {pct}%
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
                       <TouchableOpacity
-                        key={pct}
-                        style={[styles.presetBtn, portionPercentage === pct && styles.activePresetBtn]}
-                        onPress={() => setPortionPercentage(pct)}
+                        style={[styles.presetBtn, isCustomPercent && styles.activeCustomPresetBtn]}
+                        onPress={() => {
+                          setIsCustomPercent(true);
+                          setCustomPercentText(String(portionPercentage));
+                        }}
                       >
-                        <Text style={[styles.presetBtnText, portionPercentage === pct && styles.activePresetBtnText]}>
-                          {pct}%
+                        <Text style={[styles.presetBtnText, isCustomPercent && styles.activeCustomPresetBtnText]}>
+                          ✏️
                         </Text>
                       </TouchableOpacity>
-                    ))}
+                    </View>
+                    {isCustomPercent && (
+                      <View style={styles.customPresetInputRow}>
+                        <Text style={styles.customPresetLabel}>カスタム割合:</Text>
+                        <TextInput
+                          style={styles.customPresetInput}
+                          keyboardType="number-pad"
+                          placeholder="例: 80"
+                          placeholderTextColor="#64748b"
+                          value={customPercentText}
+                          onChangeText={(t) => {
+                            setCustomPercentText(t);
+                            const parsed = parseInt(t, 10);
+                            if (!isNaN(parsed) && parsed > 0) {
+                              setPortionPercentage(parsed);
+                            }
+                          }}
+                          autoFocus
+                        />
+                        <Text style={styles.customPresetUnit}>%</Text>
+                      </View>
+                    )}
                   </View>
                 )}
 
@@ -284,15 +326,51 @@ export default function PhotoRecordModal({
                   {[0.5, 0.7, 1.0, 1.2, 1.5, 2.0].map((m) => (
                     <TouchableOpacity
                       key={m}
-                      style={[styles.presetBtn, portionMultiplier === m && styles.activePresetBtn]}
-                      onPress={() => setPortionMultiplier(m)}
+                      style={[styles.presetBtn, !isCustomMultiplier && portionMultiplier === m && styles.activePresetBtn]}
+                      onPress={() => {
+                        setPortionMultiplier(m);
+                        setIsCustomMultiplier(false);
+                        setCustomMultiplierText('');
+                      }}
                     >
-                      <Text style={[styles.presetBtnText, portionMultiplier === m && styles.activePresetBtnText]}>
+                      <Text style={[styles.presetBtnText, !isCustomMultiplier && portionMultiplier === m && styles.activePresetBtnText]}>
                         {m}倍
                       </Text>
                     </TouchableOpacity>
                   ))}
+                  <TouchableOpacity
+                    style={[styles.presetBtn, isCustomMultiplier && styles.activeCustomPresetBtn]}
+                    onPress={() => {
+                      setIsCustomMultiplier(true);
+                      setCustomMultiplierText(String(portionMultiplier));
+                    }}
+                  >
+                    <Text style={[styles.presetBtnText, isCustomMultiplier && styles.activeCustomPresetBtnText]}>
+                      ✏️
+                    </Text>
+                  </TouchableOpacity>
                 </View>
+                {isCustomMultiplier && (
+                  <View style={styles.customPresetInputRow}>
+                    <Text style={styles.customPresetLabel}>カスタム倍率:</Text>
+                    <TextInput
+                      style={styles.customPresetInput}
+                      keyboardType="decimal-pad"
+                      placeholder="例: 0.8"
+                      placeholderTextColor="#64748b"
+                      value={customMultiplierText}
+                      onChangeText={(t) => {
+                        setCustomMultiplierText(t);
+                        const parsed = parseFloat(t);
+                        if (!isNaN(parsed) && parsed > 0) {
+                          setPortionMultiplier(Math.round(parsed * 100) / 100);
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <Text style={styles.customPresetUnit}>倍</Text>
+                  </View>
+                )}
               </View>
             )}
 
@@ -590,12 +668,50 @@ const styles = StyleSheet.create({
     backgroundColor: '#10b981',
     borderColor: '#10b981',
   },
+  activeCustomPresetBtn: {
+    backgroundColor: '#f59e0b22',
+    borderColor: '#f59e0b',
+  },
   presetBtnText: {
     fontSize: 12,
     color: '#94a3b8',
   },
   activePresetBtnText: {
     color: '#ffffff',
+    fontWeight: '700',
+  },
+  activeCustomPresetBtnText: {
+    color: '#f59e0b',
+    fontWeight: '700',
+  },
+  customPresetInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#0f172a',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#f59e0b',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 8,
+  },
+  customPresetLabel: {
+    fontSize: 12,
+    color: '#f59e0b',
+    fontWeight: '600',
+  },
+  customPresetInput: {
+    flex: 1,
+    color: '#f8fafc',
+    fontSize: 18,
+    fontWeight: '700',
+    paddingVertical: 2,
+    minWidth: 60,
+  },
+  customPresetUnit: {
+    fontSize: 14,
+    color: '#f59e0b',
     fontWeight: '700',
   },
   calcInputRow: {

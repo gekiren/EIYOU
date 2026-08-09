@@ -205,7 +205,7 @@ export default function SettingsModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
+          <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {/* 1. 目標 ＆ AIモデル設定タブ */}
             {activeTab === 'goals' && (
               <>
@@ -607,6 +607,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '92%',
+    flex: 1,
     padding: 16,
   },
   modalHeader: {

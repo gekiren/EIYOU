@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -6,9 +6,17 @@ import {
   Modal,
   TouchableOpacity,
   ScrollView,
-  TextInput
+  TextInput,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
 import { sanitizeNumberInput } from '../utils/inputSanitizer';
+
+const PRESET_MULTIPLIERS = [0.5, 0.7, 1.0, 1.2, 1.5, 2.0];
+
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
 
 export default function EditMealLogModal({
   visible,
@@ -31,31 +39,94 @@ export default function EditMealLogModal({
   setEditFiber,
   editMemo,
   setEditMemo,
+  editBaseNutrition,   // 元の栄養素値（倍率計算の基準）
   onSaveEdit
 }) {
+  const [multiplier, setMultiplier] = useState(1.0);
+  const [isCustom, setIsCustom] = useState(false);
+  const [customText, setCustomText] = useState('');
+
+  // モーダルが開くたびに倍率をリセット
+  useEffect(() => {
+    if (visible) {
+      setMultiplier(1.0);
+      setIsCustom(false);
+      setCustomText('');
+    }
+  }, [visible]);
+
+  // 倍率変更時に表示値を更新
+  const applyMultiplier = useCallback((m) => {
+    if (!editBaseNutrition) return;
+    setEditCalories(String(round2(editBaseNutrition.calories * m)));
+    setEditProtein(String(round2(editBaseNutrition.protein * m)));
+    setEditFat(String(round2(editBaseNutrition.fat * m)));
+    setEditCarbs(String(round2(editBaseNutrition.carbs * m)));
+    setEditSodium(String(round2(editBaseNutrition.sodium * m)));
+    setEditFiber(String(round2(editBaseNutrition.fiber * m)));
+  }, [editBaseNutrition, setEditCalories, setEditProtein, setEditFat, setEditCarbs, setEditSodium, setEditFiber]);
+
+  const handlePresetPress = (m) => {
+    setMultiplier(m);
+    setIsCustom(false);
+    setCustomText('');
+    applyMultiplier(m);
+  };
+
+  const handleCustomChange = (t) => {
+    setCustomText(t);
+    const parsed = parseFloat(t);
+    if (!isNaN(parsed) && parsed > 0) {
+      const m = Math.round(parsed * 100) / 100;
+      setMultiplier(m);
+      applyMultiplier(m);
+    }
+  };
+
+  const handleSave = () => {
+    const vals = {
+      calories: Number(editCalories) || 0,
+      protein:  Number(editProtein)  || 0,
+      fat:      Number(editFat)      || 0,
+      carbs:    Number(editCarbs)    || 0,
+      sodium:   Number(editSodium)   || 0,
+      fiber:    Number(editFiber)    || 0,
+    };
+    onSaveEdit(vals);
+  };
+
   if (!visible) return null;
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          {/* ヘッダー */}
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>✏️ 食事ログの編集</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeBtnText}>✕</Text>
-            </TouchableOpacity>
-          </View>
+      <KeyboardAvoidingView
+        style={styles.kavWrapper}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* ヘッダー */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>✏️ 食事ログの編集</Text>
+              <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+                <Text style={styles.closeBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
 
-          <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              contentContainerStyle={styles.scrollBody}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
             {/* 食事区分 */}
             <Text style={styles.fieldLabel}>食事区分</Text>
             <View style={styles.mealTypeRow}>
               {[
                 { key: 'breakfast', label: '🌅 朝食' },
-                { key: 'lunch', label: '☀️ 昼食' },
-                { key: 'dinner', label: '🌙 夕食' },
-                { key: 'snack', label: '☕ 間食' }
+                { key: 'lunch',     label: '☀️ 昼食' },
+                { key: 'dinner',    label: '🌙 夕食' },
+                { key: 'snack',     label: '☕ 間食' }
               ].map((type) => (
                 <TouchableOpacity
                   key={type.key}
@@ -76,6 +147,56 @@ export default function EditMealLogModal({
               value={editMealName}
               onChangeText={setEditMealName}
             />
+
+            {/* ────── 食べた倍率調整 ────── */}
+            <View style={styles.portionCard}>
+              <Text style={styles.portionTitle}>🍽️ 食べた量の倍率調整（{multiplier}倍）</Text>
+              <View style={styles.presetRow}>
+                {PRESET_MULTIPLIERS.map((m) => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[
+                      styles.presetBtn,
+                      !isCustom && multiplier === m && styles.activePresetBtn
+                    ]}
+                    onPress={() => handlePresetPress(m)}
+                  >
+                    <Text style={[
+                      styles.presetBtnText,
+                      !isCustom && multiplier === m && styles.activePresetBtnText
+                    ]}>
+                      {m}倍
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={[styles.presetBtn, isCustom && styles.activeCustomPresetBtn]}
+                  onPress={() => {
+                    setIsCustom(true);
+                    setCustomText(String(multiplier));
+                  }}
+                >
+                  <Text style={[styles.presetBtnText, isCustom && styles.activeCustomPresetBtnText]}>
+                    ✏️
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {isCustom && (
+                <View style={styles.customRow}>
+                  <Text style={styles.customLabel}>カスタム倍率:</Text>
+                  <TextInput
+                    style={styles.customInput}
+                    keyboardType="decimal-pad"
+                    placeholder="例: 0.8"
+                    placeholderTextColor="#64748b"
+                    value={customText}
+                    onChangeText={handleCustomChange}
+                    autoFocus
+                  />
+                  <Text style={styles.customUnit}>倍</Text>
+                </View>
+              )}
+            </View>
 
             {/* 栄養成分グリッド */}
             <View style={styles.inputGrid}>
@@ -151,17 +272,22 @@ export default function EditMealLogModal({
             />
 
             {/* 保存ボタン */}
-            <TouchableOpacity style={styles.saveBtn} onPress={onSaveEdit}>
+            <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
               <Text style={styles.saveBtnText}>💾 変更を保存する</Text>
             </TouchableOpacity>
-          </ScrollView>
+            </ScrollView>
+          </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  kavWrapper: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
@@ -171,7 +297,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0f172a',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '85%',
+    maxHeight: '90%',
     padding: 16,
   },
   modalHeader: {
@@ -258,5 +384,80 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '700',
     fontSize: 14,
+  },
+
+  // ── 倍率カード ──
+  portionCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 12,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  portionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#f59e0b',
+    marginBottom: 8,
+  },
+  presetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  presetBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    backgroundColor: '#0f172a',
+    borderWidth: 1,
+    borderColor: '#475569',
+  },
+  activePresetBtn: {
+    backgroundColor: '#f59e0b22',
+    borderColor: '#f59e0b',
+  },
+  presetBtnText: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  activePresetBtnText: {
+    color: '#f59e0b',
+    fontWeight: '700',
+  },
+  activeCustomPresetBtn: {
+    backgroundColor: '#8b5cf622',
+    borderColor: '#8b5cf6',
+  },
+  activeCustomPresetBtnText: {
+    color: '#8b5cf6',
+    fontWeight: '700',
+  },
+  customRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 6,
+  },
+  customLabel: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  customInput: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+    color: '#f8fafc',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 13,
+    borderWidth: 1,
+    borderColor: '#8b5cf6',
+  },
+  customUnit: {
+    fontSize: 12,
+    color: '#94a3b8',
   },
 });

@@ -23,6 +23,8 @@ export default function HistorySelectModal({
   const [activeTab, setActiveTab] = useState('favorites'); // 'favorites' | 'recent' | 'frequent'
   const [searchQuery, setSearchQuery] = useState('');
   const [multiplier, setMultiplier] = useState(1.0); // 0.5x, 1.0x, 1.5x, 2.0x などの倍数選択
+  const [isCustomMultiplier, setIsCustomMultiplier] = useState(false); // カスタム入力モード
+  const [customMultiplierText, setCustomMultiplierText] = useState(''); // カスタム入力テキスト
 
   // タブ・検索フィルタリング（完全保護）
   const displayItems = useMemo(() => {
@@ -127,15 +129,51 @@ export default function HistorySelectModal({
             {[0.5, 0.7, 1.0, 1.2, 1.5, 2.0].map(m => (
               <TouchableOpacity
                 key={m}
-                style={[styles.multBtn, multiplier === m && styles.activeMultBtn]}
-                onPress={() => setMultiplier(m)}
+                style={[styles.multBtn, !isCustomMultiplier && multiplier === m && styles.activeMultBtn]}
+                onPress={() => {
+                  setMultiplier(m);
+                  setIsCustomMultiplier(false);
+                  setCustomMultiplierText('');
+                }}
               >
-                <Text style={[styles.multBtnText, multiplier === m && styles.activeMultBtnText]}>
+                <Text style={[styles.multBtnText, !isCustomMultiplier && multiplier === m && styles.activeMultBtnText]}>
                   {m}x
                 </Text>
               </TouchableOpacity>
             ))}
+            <TouchableOpacity
+              style={[styles.multBtn, isCustomMultiplier && styles.activeCustomMultBtn]}
+              onPress={() => {
+                setIsCustomMultiplier(true);
+                setCustomMultiplierText(String(multiplier));
+              }}
+            >
+              <Text style={[styles.multBtnText, isCustomMultiplier && styles.activeCustomMultBtnText]}>
+                ✏️
+              </Text>
+            </TouchableOpacity>
           </View>
+          {isCustomMultiplier && (
+            <View style={styles.customInputRow}>
+              <Text style={styles.customInputLabel}>カスタム倍数:</Text>
+              <TextInput
+                style={styles.customInput}
+                keyboardType="decimal-pad"
+                placeholder="例: 0.8"
+                placeholderTextColor="#64748b"
+                value={customMultiplierText}
+                onChangeText={(t) => {
+                  setCustomMultiplierText(t);
+                  const parsed = parseFloat(t);
+                  if (!isNaN(parsed) && parsed > 0) {
+                    setMultiplier(Math.round(parsed * 100) / 100);
+                  }
+                }}
+                autoFocus
+              />
+              <Text style={styles.customInputUnit}>x</Text>
+            </View>
+          )}
 
           {/* カテゴリタブ */}
           <View style={styles.tabRow}>
@@ -309,7 +347,7 @@ const styles = StyleSheet.create({
   multiplierRow: {
     flexDirection: 'row',
     gap: 6,
-    marginBottom: 12,
+    marginBottom: 6,
   },
   multBtn: {
     flex: 1,
@@ -324,6 +362,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#10b981',
     borderColor: '#10b981',
   },
+  activeCustomMultBtn: {
+    backgroundColor: '#f59e0b22',
+    borderColor: '#f59e0b',
+  },
   multBtnText: {
     fontSize: 12,
     color: '#94a3b8',
@@ -331,6 +373,40 @@ const styles = StyleSheet.create({
   },
   activeMultBtnText: {
     color: '#ffffff',
+    fontWeight: '700',
+  },
+  activeCustomMultBtnText: {
+    color: '#f59e0b',
+    fontWeight: '700',
+  },
+  customInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#1e293b',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#f59e0b',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 12,
+  },
+  customInputLabel: {
+    fontSize: 12,
+    color: '#f59e0b',
+    fontWeight: '600',
+  },
+  customInput: {
+    flex: 1,
+    color: '#f8fafc',
+    fontSize: 16,
+    fontWeight: '700',
+    paddingVertical: 2,
+    minWidth: 60,
+  },
+  customInputUnit: {
+    fontSize: 14,
+    color: '#f59e0b',
     fontWeight: '700',
   },
   tabRow: {
