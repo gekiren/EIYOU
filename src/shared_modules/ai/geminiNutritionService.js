@@ -13,7 +13,8 @@ export async function analyzeNutritionWithGemini(
   apiKey,
   modelName = 'gemini-3.6-flash',
   ocrHintText = '',
-  thinkingMode = 'quick'
+  thinkingMode = 'quick',
+  userMemo = ''
 ) {
   if (!apiKey) {
     throw new Error('Gemini APIキーが指定されていません。');
@@ -29,6 +30,10 @@ export async function analyzeNutritionWithGemini(
   }
 
   const hintPrompt = ocrHintText ? `\n【参考：オンデバイスOCR事前抽出テキスト】\n${ocrHintText}\n` : '';
+  const memoPrompt = userMemo && userMemo.trim()
+    ? `\n【重要：ユーザーからの事前補足メモ】\n"${userMemo.trim()}"\n※ユーザーからの補足メモ（食べた量、残した量、追加した調味料、特定食材の状態など）が入力されています。提出された写真だけでなく、この補足メモを必ず最優先で反映して栄養計算（カロリー、タンパク質、脂質、炭水化物、塩分等）を調整してください。（例：「スープは少し飲んだ」場合はラーメン全体のスープカロリー・塩分を全量ではなく少量分のみ計算に算入する）また、adviceの欄にもメモを考慮した旨の簡潔な説明を含めてください。\n`
+    : '';
+
   const thinkingInstruction = thinkingMode === 'thinking'
     ? '\n【解析モード：思考あり (Thinking Mode)】\n食事の栄養成分、隠れた食材・調味料・調理法・量の割合について深く考察・推論した上で、最も正確な栄養計算結果を算出してください。\n'
     : '\n【解析モード：クイック (Quick Mode)】\n思考プロセスを最小限にし、迅速に結果を返却してください。\n';
@@ -37,6 +42,7 @@ export async function analyzeNutritionWithGemini(
 あなたは優秀な管理栄養士およびAI画像解析エクスパートです。
 提出された画像（食事の料理写真、または市販食品の栄養成分表示ラベル写真）を解析し、栄養成分情報をJSON形式で抽出・推定してください。
 ${thinkingInstruction}
+${memoPrompt}
 画像が食品や料理、栄養成分表示ラベルではない場合（文字のみの文書、景色、人物の顔、機器など）は、
 "isFood": false, "reason": "食品または栄養成分表示ラベルが検知できませんでした。" を返してください。
 
@@ -53,7 +59,7 @@ ${hintPrompt}
   "sodium": 1.5,          // 食塩相当量 (g, 数値のみ, 不明な場合は0)
   "fiber": 4.5,           // 食物繊維 (g, 数値のみ, 不明な場合は0)
   "ingredients": ["推定される主な食材1", "食材2"],
-  "advice": "栄養バランスに関する簡単なワンポイントアドバイス（50文字程度）"
+  "advice": "栄養バランスに関する簡単なワンポイントアドバイス（50文字程度。ユーザーメモがあればその考慮内容も含む）"
 }
 `;
 

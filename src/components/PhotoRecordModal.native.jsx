@@ -44,6 +44,9 @@ export default function PhotoRecordModal({
   setPortionPercentage,
   aiThinkingMode = 'quick',
   onToggleThinkingMode,
+  photoMemoInput = '',
+  setPhotoMemoInput,
+  onReAnalyzeWithMemo,
   onTakePhoto,
   onSelectImage,
   onSaveMeal
@@ -109,6 +112,22 @@ export default function PhotoRecordModal({
               </TouchableOpacity>
             </View>
 
+            {/* 事前補足メモ入力カード (例: スープは少し飲んだ、半分残した) */}
+            <View style={styles.memoCard}>
+              <Text style={styles.memoTitle}>💬 事前補足メモ (AI解析への追加指示)</Text>
+              <TextInput
+                style={styles.memoInput}
+                placeholder="例: スープは少し飲んだ、ご飯は半分残した、マヨネーズ抜き"
+                placeholderTextColor="#64748b"
+                value={photoMemoInput}
+                onChangeText={setPhotoMemoInput}
+                multiline
+              />
+              <Text style={styles.memoSubText}>
+                💡 撮影前にメモを入力すると、スープの残量や食べた割合を考慮した高精度な解析結果が送られます。
+              </Text>
+            </View>
+
             {/* 写真選択・撮影ボタン & プレビュー */}
             <View style={styles.photoPickerBox}>
               {selectedImageUri ? (
@@ -121,6 +140,11 @@ export default function PhotoRecordModal({
                     <TouchableOpacity style={styles.rePickBtn} onPress={onSelectImage}>
                       <Text style={styles.rePickBtnText}>🖼️ 別の画像を選ぶ</Text>
                     </TouchableOpacity>
+                    {onReAnalyzeWithMemo && (
+                      <TouchableOpacity style={[styles.rePickBtn, { backgroundColor: '#10b981' }]} onPress={onReAnalyzeWithMemo}>
+                        <Text style={[styles.rePickBtnText, { color: '#ffffff', fontWeight: '700' }]}>🔄 メモ反映で再解析</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               ) : (
@@ -704,5 +728,37 @@ const styles = StyleSheet.create({
   activeThinkingTabText: {
     color: '#f8fafc',
     fontWeight: '700',
+  },
+  memoCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    padding: 12,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: '#3b82f644',
+  },
+  memoTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#38bdf8',
+    marginBottom: 6,
+  },
+  memoInput: {
+    backgroundColor: '#0f172a',
+    color: '#f8fafc',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: '#334155',
+    textAlignVertical: 'top',
+  },
+  memoSubText: {
+    fontSize: 10,
+    color: '#94a3b8',
+    marginTop: 6,
+    lineHeight: 14,
   },
 });

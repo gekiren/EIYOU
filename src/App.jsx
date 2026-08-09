@@ -65,6 +65,7 @@ export default function App() {
   const [recordMode, setRecordMode] = useState('ocr'); // 'ocr' | 'dish'
   const [selectedImageUri, setSelectedImageUri] = useState(null);
   const [base64Image, setBase64Image] = useState(null);
+  const [photoMemoInput, setPhotoMemoInput] = useState('');
   const [aiAnalysisResult, setAiAnalysisResult] = useState(null);
   const [portionMultiplier, setPortionMultiplier] = useState(1.0);
   const [portionPercentage, setPortionPercentage] = useState(100);
@@ -254,6 +255,7 @@ export default function App() {
         workerProxyUrl: SECURE_WORKER_PROXY_URL,
         preferredModel: preferredAiModel,
         thinkingMode: aiThinkingMode,
+        userMemo: photoMemoInput,
         onProgress: (msg) => setProgressMsg(msg)
       });
 
@@ -268,6 +270,40 @@ export default function App() {
     } catch (err) {
       console.error('Image analysis error:', err);
       Alert.alert('解析エラー', '画像のAI解析中にエラーが発生しました。');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  // 事前メモを反映したAI再解析処理
+  const handleReAnalyzePhotoWithMemo = async () => {
+    if (!base64Image) {
+      Alert.alert('画像未選択', '解析する画像が選択されていません。');
+      return;
+    }
+    setAnalyzing(true);
+    setProgressMsg('メモの内容を反映してAI再解析中...');
+    try {
+      const aiRes = await analyzeMealPhoto({
+        base64Image: base64Image,
+        workerProxyUrl: SECURE_WORKER_PROXY_URL,
+        preferredModel: preferredAiModel,
+        thinkingMode: aiThinkingMode,
+        userMemo: photoMemoInput,
+        onProgress: (msg) => setProgressMsg(msg)
+      });
+
+      setAiAnalysisResult(aiRes);
+      setMealNameInput(aiRes.mealName || (recordMode === 'ocr' ? '栄養成分表示商品' : '料理写真記録'));
+      setCaloriesInput(String(aiRes.calories || 0));
+      setProteinInput(String(aiRes.protein || 0));
+      setFatInput(String(aiRes.fat || 0));
+      setCarbsInput(String(aiRes.carbs || 0));
+      setSodiumInput(String(aiRes.sodium || 0));
+      setFiberInput(String(aiRes.fiber || 0));
+    } catch (err) {
+      console.error('Re-analysis error:', err);
+      Alert.alert('再解析エラー', 'メモ反映AI再解析中にエラーが発生しました。');
     } finally {
       setAnalyzing(false);
     }
@@ -354,12 +390,13 @@ export default function App() {
       sodium: Number(((Number(sodiumInput) || 0) * mult).toFixed(1)),
       fiber: Number(((Number(fiberInput) || 0) * mult).toFixed(1)),
       photoUrl: persistentPhotoUrl || '',
-      memo: (aiAnalysisResult && aiAnalysisResult.advice) || ''
+      memo: [photoMemoInput.trim(), (aiAnalysisResult && aiAnalysisResult.advice) || ''].filter(Boolean).join(' / ')
     });
 
     setIsPhotoModalOpen(false);
     setSelectedImageUri(null);
     setBase64Image(null);
+    setPhotoMemoInput('');
     setAiAnalysisResult(null);
     triggerSuccess();
     loadMealLogs();
@@ -631,6 +668,9 @@ export default function App() {
         setPortionPercentage={setPortionPercentage}
         aiThinkingMode={aiThinkingMode}
         onToggleThinkingMode={handleToggleThinkingMode}
+        photoMemoInput={photoMemoInput}
+        setPhotoMemoInput={setPhotoMemoInput}
+        onReAnalyzeWithMemo={handleReAnalyzePhotoWithMemo}
         onTakePhoto={handleTakePhoto}
         onSelectImage={handleSelectImage}
         onSaveMeal={handleSavePhotoMeal}

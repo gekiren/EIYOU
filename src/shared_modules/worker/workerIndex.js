@@ -29,7 +29,7 @@ export default {
     if (url.pathname === '/api/analyze-nutrition' && request.method === 'POST') {
       try {
         const body = await request.json();
-        const { image, ocrHintText, preferredModel = 'gemini' } = body;
+        const { image, ocrHintText, preferredModel = 'gemini', userMemo = '' } = body;
 
         if (!image) {
           return new Response(JSON.stringify({ error: '画像データ(image)がありません。' }), {
@@ -44,7 +44,7 @@ export default {
         const tryGemini = async () => {
           if (!geminiKey) return null;
           try {
-            return await callGeminiNutrition(image, geminiKey, ocrHintText);
+            return await callGeminiNutrition(image, geminiKey, ocrHintText, userMemo);
           } catch (geminiErr) {
             console.error('Gemini error in Worker:', geminiErr);
             return null;
@@ -54,7 +54,7 @@ export default {
         const tryDeepSeek = async () => {
           if (!deepseekKey) return null;
           try {
-            return await callDeepSeekNutrition(image, deepseekKey, ocrHintText);
+            return await callDeepSeekNutrition(image, deepseekKey, ocrHintText, userMemo);
           } catch (deepseekErr) {
             console.error('DeepSeek error in Worker:', deepseekErr);
             return null;
@@ -162,7 +162,7 @@ export default {
   }
 };
 
-async function callGeminiNutrition(base64Image, apiKey, ocrHintText = '') {
+async function callGeminiNutrition(base64Image, apiKey, ocrHintText = '', userMemo = '') {
   let mimeType = 'image/jpeg';
   let cleanBase64 = base64Image;
 
@@ -172,8 +172,13 @@ async function callGeminiNutrition(base64Image, apiKey, ocrHintText = '') {
     cleanBase64 = parts[1];
   }
 
+  const memoPrompt = userMemo && userMemo.trim()
+    ? `\n【重要：ユーザーからの事前補足メモ】\n"${userMemo.trim()}"\n※ユーザーからの補足メモ（食べた量、残した量、追加した調味料等）が記載されています。写真と合わせてこの補足メモを最優先で考慮し、カロリー・PFC・塩分等を調整・計算してください。（例：「スープは少し飲んだ」場合はラーメンのスープ全量ではなく少量分のみ計算）\n`
+    : '';
+
   const prompt = `
 提出された画像（食事の写真、または栄養成分表示ラベルの写真）から栄養価を推定・抽出してJSONで返却してください。
+${memoPrompt}
 【返却JSON】
 {
   "isFood": true,
@@ -185,7 +190,7 @@ async function callGeminiNutrition(base64Image, apiKey, ocrHintText = '') {
   "sodium": 1.5,
   "fiber": 4.5,
   "ingredients": ["成分1", "成分2"],
-  "advice": "ワンポイントアドバイス"
+  "advice": "ワンポイントアドバイス（ユーザーメモがあれば考慮内容を含む）"
 }
 `;
 
@@ -210,7 +215,7 @@ async function callGeminiNutrition(base64Image, apiKey, ocrHintText = '') {
   return JSON.parse(text);
 }
 
-async function callDeepSeekNutrition(base64Image, apiKey, ocrHintText = '') {
+async function callDeepSeekNutrition(base64Image, apiKey, ocrHintText = '', userMemo = '') {
   let mimeType = 'image/jpeg';
   let cleanBase64 = base64Image;
 
@@ -220,9 +225,14 @@ async function callDeepSeekNutrition(base64Image, apiKey, ocrHintText = '') {
     cleanBase64 = parts[1];
   }
 
+  const memoPrompt = userMemo && userMemo.trim()
+    ? `\n【重要：ユーザーからの事前補足メモ】\n"${userMemo.trim()}"\n※ユーザーからの補足メモ（食べた量、残した量、追加調味料等）を最優先で反映して栄養数値（カロリー・PFC・塩分等）を調整計算してください。\n`
+    : '';
+
   const prompt = `
 食事または栄養成分表示の画像から栄養数値をJSONで返してください。
-{ "isFood": true, "mealName": "食品名", "calories": 450, "protein": 25.5, "fat": 12.0, "carbs": 55.0, "sodium": 1.5, "fiber": 4.5, "ingredients": [], "advice": "" }
+${memoPrompt}
+{ "isFood": true, "mealName": "食品名", "calories": 450, "protein": 25.5, "fat": 12.0, "carbs": 55.0, "sodium": 1.5, "fiber": 4.5, "ingredients": [], "advice": "アドバイス（メモ考慮内容を含む）" }
 `;
 
   const response = await fetch('https://api.deepseek.com/chat/completions', {
