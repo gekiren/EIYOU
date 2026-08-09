@@ -9,9 +9,11 @@ import {
   TextInput,
   Switch,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  Dimensions
 } from 'react-native';
 import * as Updates from 'expo-updates';
+const SCREEN_H = Dimensions.get('window').height;
 import { exportMealsToCSV } from '../shared_modules/csv/nutritionCsvService.js';
 import { obsidianSyncService } from '../shared_modules/obsidian/obsidianSyncService.js';
 import { photoStorageService } from '../shared_modules/storage/photoStorageService.js';
@@ -205,7 +207,12 @@ export default function SettingsModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.scrollBody}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* 1. 目標 ＆ AIモデル設定タブ */}
             {activeTab === 'goals' && (
               <>
@@ -606,8 +613,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0f172a',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '92%',
-    flex: 1,
+    height: SCREEN_H * 0.92,
     padding: 16,
   },
   modalHeader: {
