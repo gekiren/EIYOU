@@ -24,6 +24,18 @@ export const STORAGE_KEYS = {
 };
 
 /**
+ * デフォルトの目標自動計算用身体・活動パラメータ
+ */
+export const DEFAULT_CALC_PARAMS = {
+  gender: 'male',
+  age: '30',
+  height: '170',
+  weight: '65',
+  activityLevel: 'moderate',
+  goalType: 'maintain'
+};
+
+/**
  * デフォルトのユーザー栄養目標値
  */
 export const DEFAULT_USER_GOALS = {
@@ -32,7 +44,8 @@ export const DEFAULT_USER_GOALS = {
   fat: 55,
   carbs: 250,
   sodium: 7.0,
-  fiber: 20.0
+  fiber: 20.0,
+  calcParams: DEFAULT_CALC_PARAMS
 };
 
 /**

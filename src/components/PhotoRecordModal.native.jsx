@@ -38,6 +38,8 @@ export default function PhotoRecordModal({
   setFiberInput,
   mealType,
   setMealType,
+  mealTimeInput,
+  setMealTimeInput,
   portionMultiplier,
   setPortionMultiplier,
   portionPercentage,
@@ -377,6 +379,20 @@ export default function PhotoRecordModal({
             {/* 入力フォーム */}
             <View style={styles.formCard}>
               <Text style={styles.formTitle}>📝 登録数値の調整・確認</Text>
+
+              {/* 記録時間 ＆ 食事区分 */}
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 4 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>⏰ 記録時間 (HH:mm)</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="12:00"
+                    placeholderTextColor="#64748b"
+                    value={mealTimeInput}
+                    onChangeText={setMealTimeInput}
+                  />
+                </View>
+              </View>
 
               {/* 食事区分 */}
               <Text style={styles.fieldLabel}>食事の区分</Text>

@@ -77,10 +77,13 @@ class NutritionDb {
    * 食事ログの新規登録
    */
   async addMealLog(mealData) {
+    const now = new Date();
+    const defaultTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const logItem = {
       id: Date.now() + Math.floor(Math.random() * 1000),
-      date: mealData.date || new Date().toISOString().split('T')[0],
+      date: mealData.date || now.toISOString().split('T')[0],
       mealType: mealData.mealType || 'lunch',
+      mealTime: mealData.mealTime || defaultTime,
       name: mealData.name || '食事記録',
       calories: Number(mealData.calories) || 0,
       protein: Number(mealData.protein) || 0,
@@ -90,7 +93,7 @@ class NutritionDb {
       fiber: Number(mealData.fiber) || 0,
       photoUrl: mealData.photoUrl || '',
       memo: mealData.memo || '',
-      createdAt: new Date().toISOString()
+      createdAt: now.toISOString()
     };
 
     const logs = await this._getNativeLogs();

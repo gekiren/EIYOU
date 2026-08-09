@@ -256,7 +256,7 @@ export default function AutophagyCard({
     setCustomMinutesText('0');
   };
 
-  const presetHours = [12, 14, 16, 18, 20, 24];
+  const presetHours = [12, 14, 16, 18];
 
   // 時間のフォーマット補助 (例: 16.5 -> 16時間30分)
   const formatHoursText = (h) => {
